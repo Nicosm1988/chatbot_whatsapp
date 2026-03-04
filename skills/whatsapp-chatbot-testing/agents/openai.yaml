@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Bot Testing"
+  short_description: "Test webhook behavior, flows, and reliability"
+  default_prompt: "Probar chatbot de WhatsApp end-to-end"

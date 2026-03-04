@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp State and Data"
+  short_description: "Model sessions, users, and persistent chatbot state"
+  default_prompt: "Modelar estado y datos del chatbot de WhatsApp"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Conversation Design"
+  short_description: "Design intents, prompts, and escalation for WhatsApp"
+  default_prompt: "Diseñar flujos conversacionales para WhatsApp"

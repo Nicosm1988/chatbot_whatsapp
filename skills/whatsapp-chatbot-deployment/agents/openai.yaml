@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Bot Deployment"
+  short_description: "Deploy securely and operate WhatsApp chatbot services"
+  default_prompt: "Desplegar chatbot de WhatsApp de forma segura"

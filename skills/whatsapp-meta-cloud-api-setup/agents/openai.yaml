@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Cloud API Setup"
+  short_description: "Configure Meta Cloud API and webhook prerequisites"
+  default_prompt: "Configurar Meta Cloud API para chatbot de WhatsApp"

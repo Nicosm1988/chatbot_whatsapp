@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Bot Runtime"
+  short_description: "Implement webhook runtime and messaging handlers"
+  default_prompt: "Implementar runtime del chatbot de WhatsApp"

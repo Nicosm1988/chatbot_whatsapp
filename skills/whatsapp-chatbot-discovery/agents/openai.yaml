@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Bot Discovery"
+  short_description: "Define goals, flows, and bot scope for WhatsApp"
+  default_prompt: "Define requisitos y alcance para un bot de WhatsApp"

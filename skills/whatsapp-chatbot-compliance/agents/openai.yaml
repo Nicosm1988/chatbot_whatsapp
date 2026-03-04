@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Bot Compliance"
+  short_description: "Enforce opt-in, templates, and policy compliance"
+  default_prompt: "Asegurar cumplimiento de políticas en WhatsApp bot"

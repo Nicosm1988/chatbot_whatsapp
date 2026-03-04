@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Node.js Starter"
+  short_description: "Bootstrap a Node.js WhatsApp bot with webhook code"
+  default_prompt: "Crear base Node.js para bot de WhatsApp"

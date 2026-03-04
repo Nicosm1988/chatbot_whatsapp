@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp FastAPI Starter"
+  short_description: "Bootstrap a FastAPI WhatsApp bot with webhook code"
+  default_prompt: "Crear base FastAPI para bot de WhatsApp"
