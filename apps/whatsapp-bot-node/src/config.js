@@ -32,7 +32,8 @@ const config = {
   whatsappWebhookVerifyToken: requireEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
   whatsappAppSecret: process.env.WHATSAPP_APP_SECRET || "",
   whatsappMockMode,
-  openaiApiKey: process.env.OPENAI_API_KEY || ""
+  agenticMode: readBoolean(process.env.AGENTIC_MODE, false),
+  openaiApiKey: process.env.OPENAI_API_KEY || "",
 };
 
 module.exports = { config };

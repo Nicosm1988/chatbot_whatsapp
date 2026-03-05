@@ -2,7 +2,8 @@ const crypto = require("crypto");
 const express = require("express");
 
 const { config } = require("./config");
-const { nextBotReply } = require("./conversation");
+const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
+const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
 const app = express();
@@ -105,7 +106,8 @@ async function processIncomingEvent(payload) {
         }
 
         const inboundText = extractInboundText(message);
-        const flowResult = await nextBotReply({
+        const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
+        const flowResult = await replyHandler({
           contactId: mappedFrom,
           inboundText
         });
@@ -161,6 +163,10 @@ function trimProcessedIds(store, maxSize) {
   }
 }
 
-app.listen(config.port, () => {
-  console.log(`WhatsApp bot listening on port ${config.port}`);
-});
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  app.listen(config.port, () => {
+    console.log(`WhatsApp bot listening on port ${config.port}`);
+  });
+}
+
+module.exports = app;
