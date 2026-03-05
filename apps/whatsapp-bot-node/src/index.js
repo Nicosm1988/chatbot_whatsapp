@@ -33,7 +33,7 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   if (!isSignatureValid(req)) {
     console.warn("⚠️ Recibido webhook con firma inválida.");
     return res.sendStatus(401);
@@ -42,15 +42,15 @@ app.post("/webhook", (req, res) => {
   const payload = req.body;
   console.log("📥 Recibido Webhook de Meta:", JSON.stringify(payload, null, 2));
 
-  res.sendStatus(200);
-
-  setImmediate(async () => {
-    try {
-      await processIncomingEvent(payload);
-    } catch (error) {
-      console.error("Failed processing webhook event", error);
-    }
-  });
+  try {
+    // En arquitecturas Serverless (como Vercel), debemos esperar la ejecución
+    // antes de enviar el sendStatus, de lo contrario la función "muere" prematuramente.
+    await processIncomingEvent(payload);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Failed processing webhook event", error);
+    res.sendStatus(500);
+  }
 });
 
 function isSignatureValid(req) {
