@@ -100,10 +100,6 @@ async function processIncomingEvent(payload) {
         trimProcessedIds(processedMessageIds, 10000);
 
         let mappedFrom = from;
-        if (from.startsWith("54911")) {
-          // Workaround for Meta test number whitelist bug where the registered number uses '15' but the webhook provides '9'
-          mappedFrom = "541115" + from.slice(5);
-        }
 
         const inboundText = extractInboundText(message);
         const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
