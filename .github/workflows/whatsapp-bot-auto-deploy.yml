@@ -1,0 +1,46 @@
+name: WhatsApp Bot Auto Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/whatsapp-bot-node/**"
+      - ".github/workflows/whatsapp-bot-auto-deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  test-deploy-sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/whatsapp-bot-node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/whatsapp-bot-node/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Deploy and sync Meta webhook
+        run: npm run deploy:prod
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+          META_API_VERSION: ${{ secrets.META_API_VERSION }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
+          WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.WHATSAPP_BUSINESS_ACCOUNT_ID }}
+          WEBHOOK_BASE_URL: https://whatsapp-bot-node-chatbot1.vercel.app
