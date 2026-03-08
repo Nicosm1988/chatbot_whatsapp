@@ -4,195 +4,268 @@ function renderFlowDashboard() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flow Studio - WhatsApp Bot</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <title>Flow Studio - n8n style</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg-0: #06111f;
-        --bg-1: #0e1f35;
-        --panel: rgba(8, 21, 37, 0.82);
-        --stroke: rgba(126, 167, 211, 0.26);
-        --ink: #e6f6ff;
-        --muted: #9fc0db;
-        --accent: #27d8a5;
-        --accent-2: #ffb95d;
-        --danger: #ff7d7d;
+        --bg: #12141a;
+        --panel: #1a1f2b;
+        --panel-2: #111827;
+        --card: #21293a;
+        --ink: #e7edf8;
+        --muted: #9fb1cc;
+        --stroke: #3a4458;
+        --accent: #ff6d2d;
+        --accent-soft: rgba(255, 109, 45, 0.2);
+        --ok: #27c499;
       }
+
       * { box-sizing: border-box; }
+
       body {
         margin: 0;
-        color: var(--ink);
-        font-family: "Space Grotesk", sans-serif;
-        background:
-          radial-gradient(1000px 500px at 5% 0%, rgba(39, 216, 165, 0.16), transparent 40%),
-          radial-gradient(900px 420px at 100% 10%, rgba(255, 185, 93, 0.14), transparent 45%),
-          linear-gradient(155deg, var(--bg-0) 0%, var(--bg-1) 100%);
         min-height: 100vh;
-      }
-      .wrap {
-        width: min(1180px, 94vw);
-        margin: 0 auto;
-        padding: 36px 0 44px;
-      }
-      .hero {
-        border: 1px solid var(--stroke);
-        background: linear-gradient(140deg, rgba(7, 25, 43, 0.94), rgba(5, 16, 30, 0.85));
-        border-radius: 18px;
-        padding: 22px;
-        box-shadow: 0 25px 65px rgba(0, 0, 0, 0.35);
-      }
-      .badge {
-        display: inline-block;
-        border-radius: 999px;
-        border: 1px solid rgba(39, 216, 165, 0.4);
-        background: rgba(39, 216, 165, 0.12);
-        color: #bcffe9;
-        padding: 4px 10px;
-        font-size: 12px;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-      }
-      h1 {
-        margin: 10px 0 8px;
-        font-size: clamp(1.5rem, 3.3vw, 2.4rem);
-        line-height: 1.1;
-      }
-      .subtitle {
-        color: var(--muted);
-        margin: 0;
-        max-width: 70ch;
-      }
-      .tabs {
-        margin-top: 20px;
-        display: flex;
-        gap: 10px;
-      }
-      .tab {
-        border: 1px solid var(--stroke);
-        background: rgba(8, 21, 37, 0.8);
         color: var(--ink);
-        border-radius: 10px;
-        padding: 10px 14px;
-        cursor: pointer;
-        font-family: inherit;
+        font-family: "Manrope", sans-serif;
+        background: radial-gradient(circle at 15% -10%, rgba(255, 109, 45, 0.18), transparent 38%), var(--bg);
       }
-      .tab.active {
-        border-color: rgba(39, 216, 165, 0.62);
-        box-shadow: inset 0 0 0 1px rgba(39, 216, 165, 0.26);
+
+      .wrap {
+        width: min(1500px, 96vw);
+        margin: 0 auto;
+        padding: 22px 0 34px;
       }
-      .grid {
-        margin-top: 18px;
-        display: grid;
-        gap: 16px;
-        grid-template-columns: 1.55fr 1fr;
-      }
-      .panel {
+
+      .header {
+        background: linear-gradient(135deg, rgba(37, 44, 59, 0.95), rgba(22, 27, 38, 0.95));
         border: 1px solid var(--stroke);
-        border-radius: 16px;
-        background: var(--panel);
-        padding: 16px;
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: 0 16px 35px rgba(0, 0, 0, 0.32);
       }
-      .section-title {
-        margin: 0 0 12px;
-        font-size: 0.98rem;
-        text-transform: uppercase;
-        letter-spacing: .08em;
-        color: #9ac8ea;
-      }
-      .timeline {
-        display: grid;
-        gap: 10px;
-      }
-      .node {
-        border: 1px solid rgba(126, 167, 211, 0.22);
-        background: rgba(9, 25, 43, 0.82);
-        border-radius: 12px;
-        padding: 12px;
-        animation: rise .5s ease both;
-      }
-      .node:nth-child(2) { animation-delay: .05s; }
-      .node:nth-child(3) { animation-delay: .1s; }
-      .node:nth-child(4) { animation-delay: .15s; }
-      .node:nth-child(5) { animation-delay: .2s; }
-      .node:nth-child(6) { animation-delay: .25s; }
-      .node:nth-child(7) { animation-delay: .3s; }
-      .node:nth-child(8) { animation-delay: .35s; }
-      .node:nth-child(9) { animation-delay: .4s; }
-      .node:nth-child(10) { animation-delay: .45s; }
-      .node-head {
-        display: flex;
-        justify-content: space-between;
+
+      .tag {
+        display: inline-flex;
         align-items: center;
         gap: 8px;
+        padding: 5px 11px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 109, 45, 0.5);
+        background: var(--accent-soft);
+        font-size: 11px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
       }
-      .node-title {
+
+      h1 {
+        margin: 10px 0 8px;
+        font-size: clamp(1.3rem, 2.8vw, 2rem);
+      }
+
+      .sub {
         margin: 0;
-        font-size: 1rem;
+        color: var(--muted);
+        max-width: 90ch;
       }
-      .kind {
-        font-family: "IBM Plex Mono", monospace;
-        font-size: 11px;
-        color: var(--accent);
-        border: 1px solid rgba(39, 216, 165, 0.4);
-        border-radius: 999px;
-        padding: 1px 8px;
+
+      .toolbar {
+        margin-top: 15px;
+        display: flex;
+        gap: 9px;
+        flex-wrap: wrap;
       }
-      .node p {
-        margin: 8px 0 0;
-        color: #bad5ea;
+
+      .wf-btn {
+        border: 1px solid var(--stroke);
+        background: #182031;
+        color: var(--ink);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 13px;
+        cursor: pointer;
       }
-      .flowline {
-        margin: 8px 0 4px 2px;
-        color: #8bb4d6;
-        font-size: 12px;
+
+      .wf-btn.active {
+        border-color: rgba(255, 109, 45, 0.75);
+        box-shadow: inset 0 0 0 1px rgba(255, 109, 45, 0.3);
       }
-      .future-grid {
+
+      .layout {
+        margin-top: 14px;
         display: grid;
-        gap: 10px;
+        grid-template-columns: 1.75fr 1fr;
+        gap: 14px;
       }
-      .future-card {
-        border: 1px solid rgba(126, 167, 211, 0.22);
+
+      .panel {
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        background: linear-gradient(160deg, var(--panel), #141a25);
+        padding: 14px;
+      }
+
+      .title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #b8c8df;
+      }
+
+      .workflow-name {
+        margin: 10px 0 4px;
+        font-size: 1.2rem;
+      }
+
+      .workflow-desc {
+        margin: 0 0 10px;
+        color: var(--muted);
+      }
+
+      .canvas-shell {
+        border: 1px solid #2f3b52;
         border-radius: 12px;
-        background: rgba(9, 25, 43, 0.82);
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 22px 22px,
+          linear-gradient(0deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 22px 22px,
+          #0f1420;
+        overflow: auto;
         padding: 12px;
+        min-height: 520px;
       }
-      .future-status {
-        font-family: "IBM Plex Mono", monospace;
+
+      .canvas {
+        position: relative;
+        transform-origin: top left;
+      }
+
+      .edges {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .node {
+        position: absolute;
+        border: 1px solid #43506a;
+        border-radius: 10px;
+        background: #1d2535;
+        box-shadow: 0 10px 22px rgba(3, 7, 14, 0.45);
+        overflow: hidden;
+      }
+
+      .node-head {
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 9px;
+        border-bottom: 1px solid #3a465e;
+        background: linear-gradient(90deg, rgba(255, 109, 45, 0.25), rgba(255, 109, 45, 0.06));
+      }
+
+      .node-kind {
+        font-family: "JetBrains Mono", monospace;
         font-size: 11px;
-        border-radius: 999px;
-        padding: 2px 8px;
-        border: 1px solid rgba(255, 185, 93, 0.5);
-        color: #ffd6a0;
+        color: #ffd9c8;
       }
-      .meta-list {
+
+      .node-body {
+        padding: 9px;
+      }
+
+      .node-title {
+        margin: 0 0 4px;
+        font-size: 13px;
+      }
+
+      .node-sub {
+        margin: 0;
+        color: #a8bcda;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .paths {
+        margin-top: 12px;
+        border-top: 1px solid #37445d;
+        padding-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .path-row {
+        display: flex;
+        gap: 8px;
+        font-size: 12px;
+        color: #a8bedb;
+        padding: 7px 8px;
+        border: 1px solid #364259;
+        border-radius: 9px;
+        background: #141b29;
+      }
+
+      .path-label {
+        color: #ffd0bc;
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .meta-list, .future-list {
         display: grid;
         gap: 8px;
       }
-      .meta-row {
-        border: 1px solid rgba(126, 167, 211, 0.2);
+
+      .meta-item, .future-item {
+        border: 1px solid #334258;
         border-radius: 10px;
+        background: #141b29;
         padding: 10px;
       }
-      .meta-key {
-        font-size: 12px;
-        color: #8eb7d8;
+
+      .meta-k {
+        color: #8ea3c2;
+        font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: .06em;
+        letter-spacing: .07em;
       }
-      .meta-val {
+
+      .meta-v {
         margin-top: 5px;
-        font-family: "IBM Plex Mono", monospace;
         font-size: 13px;
+        font-family: "JetBrains Mono", monospace;
         word-break: break-word;
       }
-      @keyframes rise {
-        from { transform: translateY(8px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
+
+      .future-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
       }
-      @media (max-width: 940px) {
-        .grid {
+
+      .future-title {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .future-status {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        border: 1px solid rgba(255, 109, 45, 0.5);
+        border-radius: 999px;
+        color: #ffd8c7;
+        padding: 2px 8px;
+      }
+
+      .future-detail {
+        margin: 8px 0 0;
+        color: #a6bbd8;
+        font-size: 13px;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
           grid-template-columns: 1fr;
         }
       }
@@ -200,117 +273,182 @@ function renderFlowDashboard() {
   </head>
   <body>
     <div class="wrap">
-      <section class="hero">
-        <span class="badge">Flow Studio</span>
-        <h1>WhatsApp Bot Architecture Map</h1>
-        <p class="subtitle">
-          Vista viva del flujo actual y del roadmap futuro para presentar al cliente en cualquier momento.
+      <section class="header">
+        <span class="tag">n8n style workflow map</span>
+        <h1>Todos los caminos del bot, visualizados como canvas de nodos</h1>
+        <p class="sub">
+          Vista operativa del flujo real en produccion: nodos, ramas y loops tal como una orquestacion en n8n.
         </p>
-        <div class="tabs">
-          <button class="tab active" data-tab="current">Flujo Actual</button>
-          <button class="tab" data-tab="future">Flujos Futuros</button>
-        </div>
+        <div class="toolbar" id="toolbar"></div>
       </section>
 
-      <section class="grid">
+      <section class="layout">
         <article class="panel">
-          <h2 class="section-title" id="left-title">Flujo Actual</h2>
-          <div id="left-content"></div>
+          <h2 class="title">Workflow Canvas</h2>
+          <h3 class="workflow-name" id="workflow-name">-</h3>
+          <p class="workflow-desc" id="workflow-desc">-</p>
+          <div id="canvas-host"></div>
         </article>
         <aside class="panel">
-          <h2 class="section-title">Arquitectura</h2>
+          <h2 class="title">Arquitectura</h2>
           <div class="meta-list" id="meta"></div>
+          <h2 class="title" style="margin-top:14px;">Roadmap</h2>
+          <div class="future-list" id="future"></div>
         </aside>
       </section>
     </div>
 
     <script>
-      const tabs = Array.from(document.querySelectorAll(".tab"));
-      const leftTitle = document.getElementById("left-title");
-      const leftContent = document.getElementById("left-content");
-      const meta = document.getElementById("meta");
       let payload = null;
-      let activeTab = "current";
+      let activeWorkflowId = null;
 
-      function row(label, value) {
-        return '<div class="meta-row"><div class="meta-key">' + label + '</div><div class="meta-val">' + value + '</div></div>';
+      const toolbar = document.getElementById("toolbar");
+      const workflowName = document.getElementById("workflow-name");
+      const workflowDesc = document.getElementById("workflow-desc");
+      const canvasHost = document.getElementById("canvas-host");
+      const meta = document.getElementById("meta");
+      const future = document.getElementById("future");
+
+      function toMapById(nodes) {
+        const m = {};
+        nodes.forEach(function (n) { m[n.id] = n; });
+        return m;
       }
 
-      function renderMeta(data) {
-        const a = data.architecture || {};
-        const endpoints = (a.apiEndpoints || []).join("  |  ");
-        meta.innerHTML =
-          row("runtime", a.runtime || "-") +
-          row("state model", a.stateModel || "-") +
-          row("channels", (a.channels || []).join(", ")) +
-          row("deployment", a.deployment || "-") +
-          row("api endpoints", endpoints || "-") +
-          row("updated at", data.updatedAt || "-");
+      function edgePath(from, to) {
+        const fromRight = to.x >= from.x;
+        const sx = fromRight ? (from.x + from.w) : from.x;
+        const sy = from.y + (from.h / 2);
+        const ex = fromRight ? to.x : (to.x + to.w);
+        const ey = to.y + (to.h / 2);
+        const spread = Math.max(80, Math.abs(ex - sx) * 0.45);
+        const c1x = fromRight ? sx + spread : sx - spread;
+        const c2x = fromRight ? ex - spread : ex + spread;
+        return "M " + sx + " " + sy + " C " + c1x + " " + sy + ", " + c2x + " " + ey + ", " + ex + " " + ey;
       }
 
-      function renderCurrent(data) {
-        const nodes = (data.currentFlow && data.currentFlow.nodes) || [];
-        const transitions = (data.currentFlow && data.currentFlow.transitions) || [];
-        const transitionMap = {};
-        transitions.forEach(function (t) {
-          transitionMap[t.from] = transitionMap[t.from] || [];
-          transitionMap[t.from].push(t);
+      function renderToolbar() {
+        const workflows = payload.workflows || [];
+        toolbar.innerHTML = workflows.map(function (wf) {
+          const active = wf.id === activeWorkflowId ? "active" : "";
+          return '<button class="wf-btn ' + active + '" data-id="' + wf.id + '">' + wf.name + '</button>';
+        }).join("");
+        Array.from(toolbar.querySelectorAll(".wf-btn")).forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            activeWorkflowId = btn.dataset.id;
+            render();
+          });
         });
-
-        leftTitle.textContent = "Flujo Actual";
-        leftContent.innerHTML = '<div class="timeline">' + nodes.map(function (n, idx) {
-          const links = transitionMap[n.id] || [];
-          const next = links.length
-            ? '<div class="flowline">' + links.map(function (x) { return x.label + " -> " + x.to; }).join(" | ") + '</div>'
-            : "";
-          return (
-            '<article class="node">' +
-              '<div class="node-head"><h3 class="node-title">' + (idx + 1) + ". " + n.title + '</h3><span class="kind">' + n.kind + '</span></div>' +
-              '<p>' + n.detail + '</p>' +
-              next +
-            '</article>'
-          );
-        }).join("") + '</div>';
       }
 
-      function renderFuture(data) {
-        const future = data.futureFlows || [];
-        leftTitle.textContent = "Roadmap Futuro";
-        leftContent.innerHTML = '<div class="future-grid">' + future.map(function (f) {
+      function renderMeta() {
+        const a = payload.architecture || {};
+        const items = [
+          { k: "runtime", v: a.runtime || "-" },
+          { k: "state model", v: a.stateModel || "-" },
+          { k: "channels", v: (a.channels || []).join(", ") || "-" },
+          { k: "deployment", v: a.deployment || "-" },
+          { k: "api endpoints", v: (a.apiEndpoints || []).join(" | ") || "-" },
+          { k: "updated at", v: payload.updatedAt || "-" }
+        ];
+        meta.innerHTML = items.map(function (it) {
+          return '<div class="meta-item"><div class="meta-k">' + it.k + '</div><div class="meta-v">' + it.v + '</div></div>';
+        }).join("");
+      }
+
+      function renderFuture() {
+        const list = payload.futureFlows || [];
+        future.innerHTML = list.map(function (f) {
           return (
-            '<article class="future-card">' +
-              '<div class="node-head"><h3 class="node-title">' + f.title + '</h3><span class="future-status">' + f.status + '</span></div>' +
-              '<p>' + f.detail + '</p>' +
+            '<article class="future-item">' +
+              '<div class="future-head"><h3 class="future-title">' + f.title + '</h3><span class="future-status">' + f.status + '</span></div>' +
+              '<p class="future-detail">' + f.detail + '</p>' +
             '</article>'
           );
-        }).join("") + '</div>';
+        }).join("");
+      }
+
+      function renderWorkflow() {
+        const workflows = payload.workflows || [];
+        const wf = workflows.find(function (x) { return x.id === activeWorkflowId; }) || workflows[0];
+        if (!wf) {
+          canvasHost.innerHTML = "<p>No workflow data.</p>";
+          return;
+        }
+
+        activeWorkflowId = wf.id;
+        workflowName.textContent = wf.name;
+        workflowDesc.textContent = wf.description || "";
+
+        const nodes = wf.nodes || [];
+        const edges = wf.edges || [];
+        const map = toMapById(nodes);
+        const width = (wf.canvas && wf.canvas.width) || 1200;
+        const height = (wf.canvas && wf.canvas.height) || 560;
+
+        const edgeSvg = edges.map(function (e, idx) {
+          const from = map[e.from];
+          const to = map[e.to];
+          if (!from || !to) return "";
+          const d = edgePath(from, to);
+          const midX = (from.x + to.x + from.w) / 2;
+          const midY = (from.y + to.y + from.h) / 2;
+          return (
+            '<g>' +
+              '<path d="' + d + '" stroke="rgba(255,210,194,0.58)" stroke-width="2" fill="none" marker-end="url(#arrow)"></path>' +
+              '<rect x="' + (midX - 46) + '" y="' + (midY - 12) + '" width="92" height="18" rx="8" fill="rgba(17,24,39,0.95)"></rect>' +
+              '<text x="' + midX + '" y="' + (midY + 1) + '" text-anchor="middle" fill="#ffd8c8" font-size="11" font-family="JetBrains Mono">' + (e.label || "") + '</text>' +
+            '</g>'
+          );
+        }).join("");
+
+        const nodeHtml = nodes.map(function (n) {
+          return (
+            '<article class="node" style="left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;">' +
+              '<div class="node-head"><span class="node-kind">' + n.kind + '</span><span class="node-kind">id:' + n.id + '</span></div>' +
+              '<div class="node-body"><h4 class="node-title">' + n.title + '</h4><p class="node-sub">' + (n.subtitle || "") + '</p></div>' +
+            '</article>'
+          );
+        }).join("");
+
+        const paths = edges.map(function (e) {
+          return '<div class="path-row"><span class="path-label">' + e.label + '</span><span>' + e.from + " -> " + e.to + '</span></div>';
+        }).join("");
+
+        canvasHost.innerHTML =
+          '<div class="canvas-shell">' +
+            '<div class="canvas" style="width:' + width + 'px;height:' + height + 'px;">' +
+              '<svg class="edges" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none">' +
+                '<defs>' +
+                  '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">' +
+                    '<path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,210,194,0.85)" />' +
+                  '</marker>' +
+                '</defs>' +
+                edgeSvg +
+              '</svg>' +
+              nodeHtml +
+            '</div>' +
+          '</div>' +
+          '<div class="paths">' + paths + '</div>';
       }
 
       function render() {
         if (!payload) return;
-        tabs.forEach(function (tab) {
-          tab.classList.toggle("active", tab.dataset.tab === activeTab);
-        });
-        renderMeta(payload);
-        if (activeTab === "current") renderCurrent(payload);
-        else renderFuture(payload);
+        renderToolbar();
+        renderWorkflow();
+        renderMeta();
+        renderFuture();
       }
-
-      tabs.forEach(function (tab) {
-        tab.addEventListener("click", function () {
-          activeTab = tab.dataset.tab;
-          render();
-        });
-      });
 
       fetch("/api/flows")
         .then(function (res) { return res.json(); })
         .then(function (json) {
           payload = json;
+          activeWorkflowId = ((json.workflows || [])[0] || {}).id || null;
           render();
         })
         .catch(function () {
-          leftContent.innerHTML = '<p style="color:#ffb5b5">No se pudo cargar /api/flows.</p>';
+          canvasHost.innerHTML = '<p style="color:#ffb8b8">No se pudo cargar /api/flows</p>';
         });
     </script>
   </body>
