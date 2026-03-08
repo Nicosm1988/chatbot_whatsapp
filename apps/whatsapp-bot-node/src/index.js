@@ -6,6 +6,14 @@ const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
 const { getWorkflowCatalog, saveWorkflowCatalog, resetWorkflowCatalog } = require("./workflow_store");
 const { renderFlowDashboard } = require("./flow_dashboard");
+const { renderConversationDashboard } = require("./conversation_dashboard");
+const {
+  recordInboundMessage,
+  recordFlowTransition,
+  recordOutboundMessage,
+  listConversations,
+  getConversationDetail
+} = require("./conversation_audit_store");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
 const app = express();
@@ -25,6 +33,10 @@ app.get("/health", (_req, res) => {
 
 app.get("/", (_req, res) => {
   res.status(200).type("html").send(renderFlowDashboard());
+});
+
+app.get("/conversations", (_req, res) => {
+  res.status(200).type("html").send(renderConversationDashboard());
 });
 
 app.get("/api/flows", async (_req, res) => {
@@ -54,6 +66,36 @@ app.post("/api/flows/reset", async (_req, res) => {
   } catch (error) {
     console.error("Failed resetting workflows", error);
     res.status(500).json({ error: "flow_reset_failed" });
+  }
+});
+
+app.get("/api/conversations", async (req, res) => {
+  try {
+    const conversations = await listConversations({
+      limit: Number(req.query.limit || 60),
+      status: String(req.query.status || ""),
+      contactId: String(req.query.contactId || "")
+    });
+    res.status(200).json(conversations);
+  } catch (error) {
+    console.error("Failed listing conversations", error);
+    res.status(500).json({ error: "conversation_list_failed" });
+  }
+});
+
+app.get("/api/conversations/:conversationId", async (req, res) => {
+  try {
+    const detail = await getConversationDetail(
+      String(req.params.conversationId || ""),
+      Number(req.query.limit || 250)
+    );
+    if (!detail) {
+      return res.status(404).json({ error: "conversation_not_found" });
+    }
+    return res.status(200).json(detail);
+  } catch (error) {
+    console.error("Failed loading conversation detail", error);
+    return res.status(500).json({ error: "conversation_detail_failed" });
   }
 });
 
@@ -149,6 +191,13 @@ async function processIncomingEvent(payload) {
         const contactName = contactNamesByWaId.get(from) || "";
 
         const inboundText = extractInboundText(message);
+        const auditConversation = await recordInboundMessage({
+          contactId: mappedFrom,
+          contactName,
+          inboundText,
+          inboundMessage: message,
+          messageId
+        });
         const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
         const flowResult = await replyHandler({
           contactId: mappedFrom,
@@ -157,8 +206,28 @@ async function processIncomingEvent(payload) {
           inboundMessage: message
         });
 
+        await recordFlowTransition({
+          conversationId: auditConversation?.id,
+          flowMeta: flowResult?.meta
+        });
+
         for (const action of flowResult.actions || []) {
-          await dispatchActionWithRecipientFallback(mappedFrom, action);
+          try {
+            await dispatchActionWithRecipientFallback(mappedFrom, action);
+            await recordOutboundMessage({
+              conversationId: auditConversation?.id,
+              action,
+              status: "sent"
+            });
+          } catch (error) {
+            await recordOutboundMessage({
+              conversationId: auditConversation?.id,
+              action,
+              status: "failed",
+              error: error?.message || "send_failed"
+            });
+            throw error;
+          }
         }
       }
     }

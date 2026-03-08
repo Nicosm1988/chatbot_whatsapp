@@ -47,6 +47,7 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   const flowEngine = createFlowEngine(runtime.workflow);
   const profile = getProfile(contactId, contactName);
   const session = getSession(contactId);
+  const beforeSnapshot = buildSessionSnapshot(session);
   const input = buildInput(inboundText, inboundMessage);
   let result;
 
@@ -71,9 +72,26 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
     result = handleOrder(session, profile, input, runtime, flowEngine);
   }
 
+  const afterSnapshot = buildSessionSnapshot(session);
+  const baseMeta = {
+    before: beforeSnapshot,
+    after: afterSnapshot,
+    transition: session.lastTransition || null,
+    closed: beforeSnapshot.state !== S.IDLE && afterSnapshot.state === S.IDLE,
+    handedToHuman: afterSnapshot.state === S.AGENT,
+    sessionData: snapshotSessionData(session.data)
+  };
+  session.lastTransition = null;
+
   touchSession(contactId, session);
   await persistState(contactId, session, profile);
-  return result;
+  return {
+    actions: Array.isArray(result?.actions) ? result.actions : [],
+    meta: {
+      ...baseMeta,
+      ...(result?.meta || {})
+    }
+  };
 }
 
 function startFlow(session, profile, input, runtime, flowEngine) {
@@ -631,6 +649,26 @@ function buildInput(inboundText, inboundMessage) {
   return { text, normalized, buttonId, hasMedia };
 }
 
+function buildSessionSnapshot(session) {
+  return {
+    state: session?.state || S.IDLE,
+    step: session?.step || null
+  };
+}
+
+function snapshotSessionData(data) {
+  const input = data && typeof data === "object" ? data : {};
+  return {
+    mode: String(input.mode || ""),
+    zone: String(input.zone || ""),
+    address: String(input.address || ""),
+    branch: String(input.branch || ""),
+    orderType: String(input.orderType || ""),
+    recipes: Number(input.recipes || 0),
+    items: Number(input.items || 0)
+  };
+}
+
 function recoverFromInput(session, input) {
   const buttonId = input.buttonId || "";
 
@@ -707,6 +745,11 @@ function resolveStep(flowEngine, preferredStep, fallbackStep) {
 function moveByRoute(session, flowEngine, fromStep, routeKey, fallbackStep) {
   const nextStep = flowEngine.resolveRoute(fromStep, routeKey, fallbackStep);
   move(session, nextStep || fallbackStep);
+  session.lastTransition = {
+    from: String(fromStep || ""),
+    routeKey: String(routeKey || ""),
+    to: String(session.step || "")
+  };
 }
 
 function renderNodeTemplate(template, values) {
@@ -723,20 +766,27 @@ function buildInteractive(text, buttons) {
 
 function move(session, step) {
   session.step = step;
+  session.lastTransition = null;
   session.fallback = 0;
 }
 
 function resetSession(session) {
   session.state = S.IDLE;
   session.step = null;
+  session.lastTransition = null;
   session.data = {};
   session.fallback = 0;
 }
 
 function getSession(contactId) {
   const s = sessions.get(contactId);
-  if (s) return s;
-  const fresh = { state: S.IDLE, step: null, data: {}, fallback: 0, updatedAt: Date.now() };
+  if (s) {
+    if (!Object.prototype.hasOwnProperty.call(s, "lastTransition")) {
+      s.lastTransition = null;
+    }
+    return s;
+  }
+  const fresh = { state: S.IDLE, step: null, lastTransition: null, data: {}, fallback: 0, updatedAt: Date.now() };
   sessions.set(contactId, fresh);
   trimSessions();
   return fresh;
