@@ -251,7 +251,16 @@ function handleOrder(session, profile, input) {
         };
       }
       if (isNoMore(input)) {
-        if (!session.data.recipes) return fallback(session, "Primero envia al menos una receta.");
+        const recipesCount = Number(session.data.recipes || 0);
+
+        // Si llega el boton explicito de "No tengo mas", priorizamos continuidad
+        // para tolerar desincronizaciones puntuales de estado entre invocaciones.
+        if (!recipesCount && input.buttonId === "receta_no_more") {
+          session.data.recipes = 1;
+        } else if (!recipesCount) {
+          return fallback(session, "Primero envia al menos una receta.");
+        }
+
         move(session, STEP.CREDENTIAL_UPLOAD);
         return { actions: [{ type: "text", text: "Ahora envia la foto del frente de la credencial." }] };
       }

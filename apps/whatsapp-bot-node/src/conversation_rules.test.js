@@ -265,3 +265,38 @@ test("si en paso tipo pedido llega media, la toma como receta y no retrocede", a
 
   assert.match(firstText(result.actions), /Receta recibida/i);
 });
+
+test("si llega boton no tengo mas sin contador de recetas, continua a credencial", async () => {
+  const contactId = "5491666666666";
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Envios",
+    inboundMessage: buttonMessage("order_mode_delivery", "Envios")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "CABA",
+    inboundMessage: buttonMessage("zone_caba", "CABA")
+  });
+  await nextBotReply({ contactId, inboundText: "Av Corrientes 1234, CABA" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Obra social",
+    inboundMessage: buttonMessage("type_obra_social", "Obra social")
+  });
+
+  const result = await nextBotReply({
+    contactId,
+    inboundText: "No tengo mas",
+    inboundMessage: buttonMessage("receta_no_more", "No tengo mas")
+  });
+
+  assert.match(firstText(result.actions), /credencial/i);
+});
