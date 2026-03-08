@@ -92,6 +92,12 @@ function renderFlowDashboard() {
         box-shadow: inset 0 0 0 1px rgba(255, 109, 45, 0.3);
       }
 
+      .wf-btn.wf-btn-reset {
+        border-color: #51617f;
+        color: #d1ddf0;
+        background: #111a2a;
+      }
+
       .layout {
         margin-top: 14px;
         display: grid;
@@ -154,6 +160,15 @@ function renderFlowDashboard() {
         background: #1d2535;
         box-shadow: 0 10px 22px rgba(3, 7, 14, 0.45);
         overflow: hidden;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+      }
+
+      .node.dragging {
+        cursor: grabbing;
+        border-color: #ffb58f;
+        box-shadow: 0 16px 28px rgba(0, 0, 0, 0.5);
       }
 
       .node-head {
@@ -301,6 +316,8 @@ function renderFlowDashboard() {
     <script>
       let payload = null;
       let activeWorkflowId = null;
+      let layoutOverrides = {};
+      const LAYOUT_STORAGE_KEY = "n8n-style-layout-v1";
 
       const toolbar = document.getElementById("toolbar");
       const workflowName = document.getElementById("workflow-name");
@@ -308,6 +325,19 @@ function renderFlowDashboard() {
       const canvasHost = document.getElementById("canvas-host");
       const meta = document.getElementById("meta");
       const future = document.getElementById("future");
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, Math.round(value)));
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
 
       function toMapById(nodes) {
         const m = {};
@@ -327,14 +357,72 @@ function renderFlowDashboard() {
         return "M " + sx + " " + sy + " C " + c1x + " " + sy + ", " + c2x + " " + ey + ", " + ex + " " + ey;
       }
 
+      function loadLayoutOverrides() {
+        try {
+          const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (_error) {
+          return {};
+        }
+      }
+
+      function saveLayoutOverrides() {
+        try {
+          localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layoutOverrides));
+        } catch (_error) {
+          // ignore storage errors
+        }
+      }
+
+      function getWorkflowOverride(workflowId) {
+        if (!layoutOverrides[workflowId]) {
+          layoutOverrides[workflowId] = {};
+        }
+        return layoutOverrides[workflowId];
+      }
+
+      function applyWorkflowLayout(wf) {
+        const width = (wf.canvas && wf.canvas.width) || 1200;
+        const height = (wf.canvas && wf.canvas.height) || 560;
+        const override = getWorkflowOverride(wf.id);
+        return (wf.nodes || []).map(function (n) {
+          const o = override[n.id] || {};
+          const x = typeof o.x === "number" ? o.x : n.x;
+          const y = typeof o.y === "number" ? o.y : n.y;
+          return {
+            id: n.id,
+            title: n.title,
+            subtitle: n.subtitle,
+            kind: n.kind,
+            w: n.w,
+            h: n.h,
+            x: clamp(x, 0, Math.max(0, width - n.w)),
+            y: clamp(y, 0, Math.max(0, height - n.h))
+          };
+        });
+      }
+
       function renderToolbar() {
         const workflows = payload.workflows || [];
-        toolbar.innerHTML = workflows.map(function (wf) {
+        const workflowButtons = workflows.map(function (wf) {
           const active = wf.id === activeWorkflowId ? "active" : "";
-          return '<button class="wf-btn ' + active + '" data-id="' + wf.id + '">' + wf.name + '</button>';
+          return '<button class="wf-btn ' + active + '" data-id="' + wf.id + '">' + escapeHtml(wf.name) + '</button>';
         }).join("");
+
+        toolbar.innerHTML = workflowButtons + '<button class="wf-btn wf-btn-reset" data-id="__reset">Reset posiciones</button>';
+
         Array.from(toolbar.querySelectorAll(".wf-btn")).forEach(function (btn) {
           btn.addEventListener("click", function () {
+            if (btn.dataset.id === "__reset") {
+              if (activeWorkflowId) {
+                delete layoutOverrides[activeWorkflowId];
+                saveLayoutOverrides();
+                render();
+              }
+              return;
+            }
             activeWorkflowId = btn.dataset.id;
             render();
           });
@@ -352,7 +440,7 @@ function renderFlowDashboard() {
           { k: "updated at", v: payload.updatedAt || "-" }
         ];
         meta.innerHTML = items.map(function (it) {
-          return '<div class="meta-item"><div class="meta-k">' + it.k + '</div><div class="meta-v">' + it.v + '</div></div>';
+          return '<div class="meta-item"><div class="meta-k">' + escapeHtml(it.k) + '</div><div class="meta-v">' + escapeHtml(it.v) + '</div></div>';
         }).join("");
       }
 
@@ -361,11 +449,88 @@ function renderFlowDashboard() {
         future.innerHTML = list.map(function (f) {
           return (
             '<article class="future-item">' +
-              '<div class="future-head"><h3 class="future-title">' + f.title + '</h3><span class="future-status">' + f.status + '</span></div>' +
-              '<p class="future-detail">' + f.detail + '</p>' +
+              '<div class="future-head"><h3 class="future-title">' + escapeHtml(f.title) + '</h3><span class="future-status">' + escapeHtml(f.status) + '</span></div>' +
+              '<p class="future-detail">' + escapeHtml(f.detail) + '</p>' +
             '</article>'
           );
         }).join("");
+      }
+
+      function buildEdgesMarkup(edges, map) {
+        return edges.map(function (e) {
+          const from = map[e.from];
+          const to = map[e.to];
+          if (!from || !to) return "";
+          const d = edgePath(from, to);
+          const midX = (from.x + to.x + from.w) / 2;
+          const midY = (from.y + to.y + from.h) / 2;
+          return (
+            '<g>' +
+              '<path d="' + d + '" stroke="rgba(255,210,194,0.58)" stroke-width="2" fill="none" marker-end="url(#arrow)"></path>' +
+              '<rect x="' + (midX - 62) + '" y="' + (midY - 12) + '" width="124" height="18" rx="8" fill="rgba(17,24,39,0.95)"></rect>' +
+              '<text x="' + midX + '" y="' + (midY + 1) + '" text-anchor="middle" fill="#ffd8c8" font-size="11" font-family="JetBrains Mono">' + escapeHtml(e.label || "") + '</text>' +
+            '</g>'
+          );
+        }).join("");
+      }
+
+      function bindNodeDragging(wf, nodesMap, edges, width, height, redrawEdges) {
+        const nodeElements = Array.from(canvasHost.querySelectorAll(".node"));
+        let drag = null;
+
+        nodeElements.forEach(function (nodeEl) {
+          nodeEl.addEventListener("pointerdown", function (event) {
+            const nodeId = nodeEl.dataset.id;
+            const node = nodesMap[nodeId];
+            if (!node) return;
+
+            drag = {
+              id: nodeId,
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: node.x,
+              originY: node.y,
+              el: nodeEl
+            };
+
+            nodeEl.classList.add("dragging");
+            try { nodeEl.setPointerCapture(event.pointerId); } catch (_error) {}
+            event.preventDefault();
+          });
+
+          nodeEl.addEventListener("pointermove", function (event) {
+            if (!drag || drag.el !== nodeEl) return;
+            const node = nodesMap[drag.id];
+            if (!node) return;
+
+            const dx = event.clientX - drag.startX;
+            const dy = event.clientY - drag.startY;
+            const maxX = Math.max(0, width - node.w);
+            const maxY = Math.max(0, height - node.h);
+
+            node.x = clamp(drag.originX + dx, 0, maxX);
+            node.y = clamp(drag.originY + dy, 0, maxY);
+            nodeEl.style.left = node.x + "px";
+            nodeEl.style.top = node.y + "px";
+
+            const override = getWorkflowOverride(wf.id);
+            override[node.id] = { x: node.x, y: node.y };
+            redrawEdges();
+          });
+
+          function endDrag() {
+            if (!drag || drag.el !== nodeEl) return;
+            try { nodeEl.releasePointerCapture(drag.pointerId); } catch (_error) {}
+            nodeEl.classList.remove("dragging");
+            drag = null;
+            saveLayoutOverrides();
+          }
+
+          nodeEl.addEventListener("pointerup", endDrag);
+          nodeEl.addEventListener("pointercancel", endDrag);
+          nodeEl.addEventListener("lostpointercapture", endDrag);
+        });
       }
 
       function renderWorkflow() {
@@ -380,39 +545,23 @@ function renderFlowDashboard() {
         workflowName.textContent = wf.name;
         workflowDesc.textContent = wf.description || "";
 
-        const nodes = wf.nodes || [];
+        const nodes = applyWorkflowLayout(wf);
         const edges = wf.edges || [];
         const map = toMapById(nodes);
         const width = (wf.canvas && wf.canvas.width) || 1200;
         const height = (wf.canvas && wf.canvas.height) || 560;
 
-        const edgeSvg = edges.map(function (e, idx) {
-          const from = map[e.from];
-          const to = map[e.to];
-          if (!from || !to) return "";
-          const d = edgePath(from, to);
-          const midX = (from.x + to.x + from.w) / 2;
-          const midY = (from.y + to.y + from.h) / 2;
-          return (
-            '<g>' +
-              '<path d="' + d + '" stroke="rgba(255,210,194,0.58)" stroke-width="2" fill="none" marker-end="url(#arrow)"></path>' +
-              '<rect x="' + (midX - 46) + '" y="' + (midY - 12) + '" width="92" height="18" rx="8" fill="rgba(17,24,39,0.95)"></rect>' +
-              '<text x="' + midX + '" y="' + (midY + 1) + '" text-anchor="middle" fill="#ffd8c8" font-size="11" font-family="JetBrains Mono">' + (e.label || "") + '</text>' +
-            '</g>'
-          );
-        }).join("");
-
         const nodeHtml = nodes.map(function (n) {
           return (
-            '<article class="node" style="left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;">' +
-              '<div class="node-head"><span class="node-kind">' + n.kind + '</span><span class="node-kind">id:' + n.id + '</span></div>' +
-              '<div class="node-body"><h4 class="node-title">' + n.title + '</h4><p class="node-sub">' + (n.subtitle || "") + '</p></div>' +
+            '<article class="node" data-id="' + escapeHtml(n.id) + '" style="left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;">' +
+              '<div class="node-head"><span class="node-kind">' + escapeHtml(n.kind) + '</span><span class="node-kind">id:' + escapeHtml(n.id) + '</span></div>' +
+              '<div class="node-body"><h4 class="node-title">' + escapeHtml(n.title) + '</h4><p class="node-sub">' + escapeHtml(n.subtitle || "") + '</p></div>' +
             '</article>'
           );
         }).join("");
 
         const paths = edges.map(function (e) {
-          return '<div class="path-row"><span class="path-label">' + e.label + '</span><span>' + e.from + " -> " + e.to + '</span></div>';
+          return '<div class="path-row"><span class="path-label">' + escapeHtml(e.label) + '</span><span>' + escapeHtml(e.from + " -> " + e.to) + '</span></div>';
         }).join("");
 
         canvasHost.innerHTML =
@@ -424,12 +573,20 @@ function renderFlowDashboard() {
                     '<path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,210,194,0.85)" />' +
                   '</marker>' +
                 '</defs>' +
-                edgeSvg +
+                '<g id="edge-layer"></g>' +
               '</svg>' +
               nodeHtml +
             '</div>' +
           '</div>' +
           '<div class="paths">' + paths + '</div>';
+
+        const edgeLayer = canvasHost.querySelector("#edge-layer");
+        function redrawEdges() {
+          edgeLayer.innerHTML = buildEdgesMarkup(edges, map);
+        }
+
+        redrawEdges();
+        bindNodeDragging(wf, map, edges, width, height, redrawEdges);
       }
 
       function render() {
@@ -444,6 +601,7 @@ function renderFlowDashboard() {
         .then(function (res) { return res.json(); })
         .then(function (json) {
           payload = json;
+          layoutOverrides = loadLayoutOverrides();
           activeWorkflowId = ((json.workflows || [])[0] || {}).id || null;
           render();
         })
