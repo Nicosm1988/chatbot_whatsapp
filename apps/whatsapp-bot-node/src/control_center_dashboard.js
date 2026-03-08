@@ -157,6 +157,7 @@ function renderControlCenterDashboard() {
     var sAgent=document.getElementById("s-agent");
     var sTests=document.getElementById("s-tests");
     var summaryAbortController = null;
+    var activeView = "editor";
 
     function setStatus(text){statusEl.textContent=text;}
 
@@ -177,23 +178,42 @@ function renderControlCenterDashboard() {
 
     function activate(view){
       var meta=views[view]||views.editor;
+      activeView = view;
       frame.src=meta.src;
       viewTitle.textContent=meta.title;
       viewSub.textContent=meta.sub;
       Array.from(document.querySelectorAll("[data-view]")).forEach(function(btn){
         btn.classList.toggle("active",btn.getAttribute("data-view")===view);
       });
+      loadSummary();
     }
 
     async function loadSummary(){
       setStatus("Actualizando datos...");
       try{
-        var s=await fetchJsonWithTimeout("/api/conversations/summary",9000);
-        sTotal.textContent=String(s.total||0);
-        sOpen.textContent=String(s.open||0);
-        sAgent.textContent=String(s.agentPending||0);
-        sTests.textContent=String(s.testRuns||0);
-        setStatus("Ultima actividad: "+(s.lastEventAt?new Date(s.lastEventAt).toLocaleString("es-AR"):"-"));
+        var qs = new URLSearchParams({limit:"200"});
+        if(activeView === "tests"){
+          qs.set("tag","test_run");
+        }
+        var rows = await fetchJsonWithTimeout("/api/conversations?"+qs.toString(),9000);
+        var total = (rows||[]).length;
+        var open = (rows||[]).filter(function(r){ return r && r.status==="open"; }).length;
+        var agent = (rows||[]).filter(function(r){ return r && r.status==="agent_pending"; }).length;
+        var testRuns = (rows||[]).filter(function(r){
+          return r && Array.isArray(r.tags) && r.tags.indexOf("test_run") >= 0;
+        }).length;
+        var latest = (rows||[]).map(function(r){ return r && r.lastEventAt ? String(r.lastEventAt) : ""; }).filter(Boolean).sort().pop() || null;
+
+        sTotal.textContent=String(total);
+        sOpen.textContent=String(open);
+        sAgent.textContent=String(agent);
+        sTests.textContent=String(testRuns);
+
+        if(activeView === "tests"){
+          setStatus("Pruebas visibles: "+total+(latest?" | Ultima actividad: "+new Date(latest).toLocaleString("es-AR"):""));
+        } else {
+          setStatus("Casos visibles: "+total+(latest?" | Ultima actividad: "+new Date(latest).toLocaleString("es-AR"):""));
+        }
       }catch(err){
         setStatus("No se pudieron actualizar los datos (timeout/conectividad)");
         console.error(err);
@@ -207,7 +227,6 @@ function renderControlCenterDashboard() {
     document.getElementById("b-refresh").onclick=function(){loadSummary();};
 
     activate("editor");
-    loadSummary();
     setInterval(loadSummary,45000);
   </script>
 </body>

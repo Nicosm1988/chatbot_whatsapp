@@ -15,6 +15,7 @@
 - Removed `Mapa para Cliente` from main client board navigation.
 - Hardened conversation connectivity with API/KV timeouts, retries and fallback cache to avoid infinite `Cargando`.
 - Optimized audit reads for conversations/summary/detail with batched loading.
+- Aligned left-side counters with active board context (`Casos` vs `Registro de Pruebas`) to avoid count/list mismatch.
 
 ## Maintenance rule
 After every major product change, update:

@@ -126,6 +126,7 @@ function renderConversationDashboard() {
     var qStatus = document.getElementById("q-status");
     var qTag = document.getElementById("q-tag");
     var bRefresh = document.getElementById("b-refresh");
+    var tagLocked = false;
 
     function esc(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
     function fmt(ts){try{return new Date(ts).toLocaleString("es-AR");}catch(_e){return ts||"-";}}
@@ -289,8 +290,18 @@ function renderConversationDashboard() {
 
     var init=new URLSearchParams(window.location.search||"");
     if(init.get("status"))qStatus.value=init.get("status");
-    if(init.get("tag"))qTag.value=init.get("tag");
+    if(init.get("tag")){
+      qTag.value=String(init.get("tag")||"").trim();
+      if(qTag.value==="test_run"){
+        tagLocked = true;
+        qTag.disabled = true;
+      }
+    }
     if(init.get("contact"))qContact.value=init.get("contact");
+
+    if(tagLocked){
+      setStatus("Mostrando solo conversaciones de pruebas");
+    }
 
     loadList().catch(function(err){setStatus("Error al cargar");console.error(err);});
   </script>
