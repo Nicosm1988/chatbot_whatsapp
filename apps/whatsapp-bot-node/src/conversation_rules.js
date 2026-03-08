@@ -1,4 +1,5 @@
 const { config } = require("./config");
+const { getChatbotRuntimeConfig } = require("./workflow_store");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 20000;
@@ -31,6 +32,7 @@ const STEP = {
   PAYMENT_PROOF: "payment_proof",
   SURVEY: "survey"
 };
+const STEP_VALUES = new Set(Object.values(STEP));
 
 const sessions = new Map();
 const profiles = new Map();
@@ -42,6 +44,7 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
 
   await hydrateState(contactId);
   cleanupExpiredSessions();
+  const runtime = await getChatbotRuntimeConfig();
   const profile = getProfile(contactId, contactName);
   const session = getSession(contactId);
   const input = buildInput(inboundText, inboundMessage);
@@ -49,10 +52,10 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
 
   if (isCancel(input.normalized)) {
     resetSession(session);
-    result = { actions: [{ type: "text", text: "Pedido cancelado." }, ...mainMenu(profile)] };
+    result = { actions: [{ type: "text", text: "Pedido cancelado." }, ...mainMenu(profile, runtime)] };
   } else if (isMenu(input.normalized)) {
     resetSession(session);
-    result = { actions: mainMenu(profile) };
+    result = { actions: mainMenu(profile, runtime) };
   } else if (isHuman(input.normalized)) {
     session.state = S.AGENT;
     session.step = null;
@@ -61,11 +64,11 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   } else if (session.state === S.AGENT) {
     result = { actions: [{ type: "text", text: "Tu caso sigue con asesor humano. Escribi MENU para volver al bot." }] };
   } else if (session.state === S.IDLE && recoverFromInput(session, input)) {
-    result = handleOrder(session, profile, input);
+    result = handleOrder(session, profile, input, runtime);
   } else if (session.state === S.IDLE) {
-    result = startFlow(session, profile, input);
+    result = startFlow(session, profile, input, runtime);
   } else {
-    result = handleOrder(session, profile, input);
+    result = handleOrder(session, profile, input, runtime);
   }
 
   touchSession(contactId, session);
@@ -73,41 +76,41 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   return result;
 }
 
-function startFlow(session, profile, input) {
+function startFlow(session, profile, input, runtime) {
   session.state = S.ORDER;
   if (!input.normalized || isGreeting(input.normalized)) {
     if (profile.lastOrder) {
       move(session, STEP.RETURNING);
-      return { actions: returningPrompt(profile) };
+      return { actions: returningPrompt(profile, runtime) };
     }
   }
   move(session, STEP.MENU);
-  return { actions: mainMenu(profile) };
+  return { actions: mainMenu(profile, runtime) };
 }
 
-function handleOrder(session, profile, input) {
+function handleOrder(session, profile, input, runtime) {
   switch (session.step) {
     case STEP.RETURNING: {
       const c = parseReturning(input);
-      if (!c) return fallback(session, "Elegi Continuar o Nuevo pedido.", "Selecciona una opcion:", returningButtons());
+      if (!c) return fallback(session, "Elegi Continuar o Nuevo pedido.", "Selecciona una opcion:", returningButtons(runtime));
       if (c === "continue") {
         hydrateFromLastOrder(session, profile.lastOrder);
-        move(session, STEP.ORDER_TYPE);
+        moveByRoute(session, runtime, "return_continue", STEP.ORDER_TYPE);
         return {
           actions: [
             { type: "text", text: continueSummary(profile.lastOrder) },
-            orderTypeButtons()
+            orderTypeButtons(runtime)
           ]
         };
       }
-      move(session, STEP.MENU);
+      moveByRoute(session, runtime, "return_new", STEP.MENU);
       session.data = {};
-      return { actions: [{ type: "text", text: "Perfecto, hacemos un pedido nuevo." }, ...mainMenu(profile, true)] };
+      return { actions: [{ type: "text", text: "Perfecto, hacemos un pedido nuevo." }, ...mainMenu(profile, runtime, true)] };
     }
 
     case STEP.MENU: {
       const c = parseMenu(input);
-      if (!c) return fallback(session, "Elegi una opcion del menu.", "Selecciona una opcion:", menuButtons());
+      if (!c) return fallback(session, "Elegi una opcion del menu.", nodeText(runtime, "menu", "Selecciona una opcion:"), menuButtons(runtime));
       if (c === "web") {
         return {
           actions: [
@@ -115,7 +118,7 @@ function handleOrder(session, profile, input) {
               type: "text",
               text: `Compra online en ${config.catalogWebUrl} o MercadoLibre: ${config.mercadoLibreUrl}.`
             },
-            menuButtons()
+            menuButtons(runtime)
           ]
         };
       }
@@ -124,36 +127,33 @@ function handleOrder(session, profile, input) {
         session.step = null;
         return { actions: [{ type: "text", text: "Te derivo al sector de consultas y reclamos." }] };
       }
-      move(session, STEP.MODE);
+      moveByRoute(session, runtime, "menu_make_order", STEP.MODE);
       return {
         actions: [
-          { type: "text", text: "Selecciona modalidad o escribi CANCELAR." },
-          buildInteractive("Modalidad:", [
-            { id: "order_mode_delivery", title: "Envios" },
-            { id: "order_mode_pickup", title: "Retiro tienda" }
-          ])
+          { type: "text", text: nodeText(runtime, "mode", "Selecciona modalidad o escribi CANCELAR.") },
+          modeButtons(runtime)
         ]
       };
     }
 
     case STEP.MODE: {
       const mode = parseMode(input);
-      if (!mode) return fallback(session, "Elegi Envios o Retiro tienda.", "Modalidad:", modeButtons());
+      if (!mode) return fallback(session, "Elegi Envios o Retiro tienda.", nodeText(runtime, "mode", "Modalidad:"), modeButtons(runtime));
       session.data.mode = mode;
       if (mode === "ENVIO") {
-        move(session, STEP.ZONE);
+        moveByRoute(session, runtime, "mode_delivery", STEP.ZONE);
         const actions = [];
         if (config.shippingPromoImageUrl) {
           actions.push({ type: "image", url: config.shippingPromoImageUrl, caption: "Promociones de envio" });
         }
-        actions.push({ type: "text", text: "Perfecto. Ahora selecciona la zona de envio." });
-        actions.push(zoneButtons());
+        actions.push({ type: "text", text: nodeText(runtime, "zone", "Perfecto. Ahora selecciona la zona de envio.") });
+        actions.push(zoneButtons(runtime));
         return { actions };
       }
-      move(session, STEP.PICKUP_BRANCH);
+      moveByRoute(session, runtime, "mode_pickup", STEP.PICKUP_BRANCH);
       return {
         actions: [
-          buildInteractive("Selecciona sucursal:", [
+          buildInteractive(nodeText(runtime, "pickup_branch", "Selecciona sucursal:"), [
             { id: "pickup_san_isidro", title: "San Isidro" },
             { id: "pickup_martinez", title: "Martinez" },
             { id: "pickup_caba", title: "CABA" }
@@ -164,47 +164,47 @@ function handleOrder(session, profile, input) {
 
     case STEP.ZONE: {
       const zone = parseZone(input);
-      if (!zone) return fallback(session, "Elegi Zona Norte, CABA o Pilar.", "Zona:", zoneButtons());
+      if (!zone) return fallback(session, "Elegi Zona Norte, CABA o Pilar.", nodeText(runtime, "zone", "Zona:"), zoneButtons(runtime));
       session.data.zone = zone;
       if (profile.lastOrder?.address) {
-        move(session, STEP.ADDRESS_DECISION);
+        moveByRoute(session, runtime, "zone_saved_address", STEP.ADDRESS_DECISION);
         return {
           actions: [
-            buildInteractive(`Enviar a ${profile.lastOrder.address}?`, [
+            buildInteractive(renderNodeTemplate(nodeText(runtime, "address_decision", "Enviar a {address}?"), { address: profile.lastOrder.address }), [
               { id: "addr_yes_saved", title: "Si misma dir" },
               { id: "addr_other", title: "Otra direccion" }
             ])
           ]
         };
       }
-      move(session, STEP.ADDRESS_INPUT);
-      return { actions: [{ type: "text", text: "Envia direccion completa para el envio." }] };
+      moveByRoute(session, runtime, "zone_need_address", STEP.ADDRESS_INPUT);
+      return { actions: [{ type: "text", text: nodeText(runtime, "address_input", "Envia direccion completa para el envio.") }] };
     }
 
     case STEP.ADDRESS_DECISION: {
       const c = parseAddressChoice(input);
-      if (!c) return fallback(session, "Elegi direccion guardada u otra.", "Selecciona una opcion:", addressButtons());
+      if (!c) return fallback(session, "Elegi direccion guardada u otra.", nodeText(runtime, "address_decision", "Selecciona una opcion:"), addressButtons(runtime));
       if (c === "saved") {
         session.data.address = profile.lastOrder.address;
-        move(session, STEP.ORDER_TYPE);
-        return { actions: [orderTypeButtons()] };
+        moveByRoute(session, runtime, "address_use_saved", STEP.ORDER_TYPE);
+        return { actions: [orderTypeButtons(runtime)] };
       }
-      move(session, STEP.ADDRESS_INPUT);
-      return { actions: [{ type: "text", text: "Envia la nueva direccion completa." }] };
+      moveByRoute(session, runtime, "address_other", STEP.ADDRESS_INPUT);
+      return { actions: [{ type: "text", text: nodeText(runtime, "address_input", "Envia la nueva direccion completa.") }] };
     }
 
     case STEP.ADDRESS_INPUT:
       if (!input.text || input.text.length < 8) return fallback(session, "Necesito una direccion completa.");
       session.data.address = trim(input.text, 120);
-      move(session, STEP.ORDER_TYPE);
-      return { actions: [orderTypeButtons()] };
+      moveByRoute(session, runtime, "address_done", STEP.ORDER_TYPE);
+      return { actions: [orderTypeButtons(runtime)] };
 
     case STEP.PICKUP_BRANCH: {
       const b = parseBranch(input);
       if (!b) return fallback(session, "Elegi San Isidro, Martinez o CABA.");
       session.data.branch = b;
-      move(session, STEP.ORDER_TYPE);
-      return { actions: [orderTypeButtons()] };
+      moveByRoute(session, runtime, "pickup_done", STEP.ORDER_TYPE);
+      return { actions: [orderTypeButtons(runtime)] };
     }
 
     case STEP.ORDER_TYPE: {
@@ -213,7 +213,7 @@ function handleOrder(session, profile, input) {
       if (input.hasMedia) {
         session.data.orderType = "OBRA SOCIAL/PREPAGA";
         session.data.recipes = Number(session.data.recipes || 0) + 1;
-        move(session, STEP.RECETA_UPLOAD);
+        moveByRoute(session, runtime, "order_type_os", STEP.RECETA_UPLOAD);
         return {
           actions: [
             { type: "text", text: "Receta recibida. Si tenes mas, segui enviando. Si no, NO TENGO MAS." },
@@ -223,21 +223,21 @@ function handleOrder(session, profile, input) {
       }
 
       const t = parseType(input);
-      if (!t) return fallback(session, "Elegi Particular u Obra social.", "Selecciona tipo:", orderTypeButtons());
+      if (!t) return fallback(session, "Elegi Particular u Obra social.", nodeText(runtime, "order_type", "Selecciona tipo:"), orderTypeButtons(runtime));
       session.data.orderType = t;
       if (t === "OBRA SOCIAL/PREPAGA") {
         session.data.recipes = 0;
-        move(session, STEP.RECETA_UPLOAD);
+        moveByRoute(session, runtime, "order_type_os", STEP.RECETA_UPLOAD);
         return {
           actions: [
-            { type: "text", text: "Envia fotos/links/PDF de recetas. Al terminar toca NO TENGO MAS." },
+            { type: "text", text: nodeText(runtime, "receta_upload", "Envia fotos/links/PDF de recetas. Al terminar toca NO TENGO MAS.") },
             buildInteractive("Selecciona una opcion:", [{ id: "receta_no_more", title: "No tengo mas" }])
           ]
         };
       }
       session.data.items = 0;
-      move(session, STEP.ITEM_INPUT);
-      return { actions: [{ type: "text", text: "Envia el primer producto (texto, foto o PDF)." }] };
+      moveByRoute(session, runtime, "order_type_particular", STEP.ITEM_INPUT);
+      return { actions: [{ type: "text", text: nodeText(runtime, "item_input", "Envia el primer producto (texto, foto o PDF).") }] };
     }
 
     case STEP.RECETA_UPLOAD:
@@ -261,39 +261,39 @@ function handleOrder(session, profile, input) {
           return fallback(session, "Primero envia al menos una receta.");
         }
 
-        move(session, STEP.CREDENTIAL_UPLOAD);
-        return { actions: [{ type: "text", text: "Ahora envia la foto del frente de la credencial." }] };
+        moveByRoute(session, runtime, "receta_done", STEP.CREDENTIAL_UPLOAD);
+        return { actions: [{ type: "text", text: nodeText(runtime, "credential_upload", "Ahora envia la foto del frente de la credencial.") }] };
       }
       return fallback(session, "Envia receta o toca NO TENGO MAS.");
 
     case STEP.CREDENTIAL_UPLOAD:
       if (!input.hasMedia) return fallback(session, "Necesito la foto/PDF de la credencial.");
-      move(session, STEP.ITEM_DECISION);
-      return { actions: [itemDecisionButtons()] };
+      moveByRoute(session, runtime, "credential_done", STEP.ITEM_DECISION);
+      return { actions: [itemDecisionButtons(runtime)] };
 
     case STEP.ITEM_INPUT:
       if (!input.hasMedia && !input.text) return fallback(session, "Envia producto por texto, foto o PDF.");
       session.data.items = Number(session.data.items || 0) + 1;
-      move(session, STEP.ITEM_DECISION);
-      return { actions: [{ type: "text", text: "Producto agregado." }, itemDecisionButtons()] };
+      moveByRoute(session, runtime, "item_input_done", STEP.ITEM_DECISION);
+      return { actions: [{ type: "text", text: "Producto agregado." }, itemDecisionButtons(runtime)] };
 
     case STEP.ITEM_DECISION: {
       const d = parseItemDecision(input);
-      if (!d) return fallback(session, "Elegi Pedido completo, Agregar producto o Cancelar.", "Selecciona una opcion:", itemDecisionButtons());
+      if (!d) return fallback(session, "Elegi Pedido completo, Agregar producto o Cancelar.", nodeText(runtime, "item_decision", "Selecciona una opcion:"), itemDecisionButtons(runtime));
       if (d === "cancel") {
         resetSession(session);
-        return { actions: [{ type: "text", text: "Pedido cancelado." }, ...mainMenu(profile)] };
+        return { actions: [{ type: "text", text: "Pedido cancelado." }, ...mainMenu(profile, runtime)] };
       }
       if (d === "add") {
-        move(session, STEP.ITEM_INPUT);
+        moveByRoute(session, runtime, "item_decision_add", STEP.ITEM_INPUT);
         return { actions: [{ type: "text", text: "Perfecto, envia el siguiente producto." }] };
       }
       saveLastOrder(profile, session.data);
-      move(session, STEP.AGENT_CONTINUE);
+      moveByRoute(session, runtime, "item_decision_done", STEP.AGENT_CONTINUE);
       return {
         actions: [
           { type: "text", text: "Gracias, un momento por favor. Enseguida continuamos con tu pedido." },
-          { type: "text", text: `Hola, te comunicaste con envios de ${config.businessDisplayName}. Deseas continuar?` }
+          { type: "text", text: nodeText(runtime, "agent_continue", `Hola, te comunicaste con envios de ${config.businessDisplayName}. Deseas continuar?`) }
         ]
       };
     }
@@ -302,119 +302,129 @@ function handleOrder(session, profile, input) {
       const yn = parseYesNo(input);
       if (!yn) return fallback(session, "Responde SI o NO.");
       if (yn === "no") {
+        moveByRoute(session, runtime, "agent_continue_no", STEP.MENU);
+        if (session.step === STEP.MENU) {
+          session.state = S.ORDER;
+          session.data = {};
+          return { actions: [{ type: "text", text: "Dejamos el pedido en pausa." }, ...mainMenu(profile, runtime, true)] };
+        }
         resetSession(session);
         return { actions: [{ type: "text", text: "Dejamos el pedido en pausa. Escribi MENU para retomarlo." }] };
       }
-      move(session, STEP.AGENT_ADD_MORE);
-      return { actions: [{ type: "text", text: quoteSummary(session.data) }, { type: "text", text: "Queres agregar algo mas?" }] };
+      moveByRoute(session, runtime, "agent_continue_yes", STEP.AGENT_ADD_MORE);
+      return { actions: [{ type: "text", text: quoteSummary(session.data) }, { type: "text", text: nodeText(runtime, "agent_add_more", "Queres agregar algo mas?") }] };
     }
 
     case STEP.AGENT_ADD_MORE: {
       const yn = parseYesNo(input);
       if (!yn) return fallback(session, "Responde SI para agregar o NO para pagar.");
       if (yn === "yes") {
-        move(session, STEP.ITEM_INPUT);
+        moveByRoute(session, runtime, "agent_add_more_yes", STEP.ITEM_INPUT);
         return { actions: [{ type: "text", text: "Envia el producto adicional." }] };
       }
-      move(session, STEP.PAYMENT_PROOF);
+      moveByRoute(session, runtime, "agent_add_more_no", STEP.PAYMENT_PROOF);
       return {
         actions: [
           { type: "text", text: `Link de pago: ${config.paymentLinkUrl}` },
-          { type: "text", text: "Aguardo comprobante de pago (imagen o PDF)." }
+          { type: "text", text: nodeText(runtime, "payment_proof", "Aguardo comprobante de pago (imagen o PDF).") }
         ]
       };
     }
 
     case STEP.PAYMENT_PROOF:
       if (!input.hasMedia) return fallback(session, "Adjunta imagen o PDF del comprobante.");
-      move(session, STEP.SURVEY);
+      moveByRoute(session, runtime, "payment_done", STEP.SURVEY);
       return {
         actions: [
           { type: "text", text: "Gracias, tu pedido saldra a partir de las 11 hs. Entrega estimada: 12 a 15 hs." },
           { type: "text", text: "PEDIDO EN PREPARACION" },
-          { type: "text", text: "Tu opinion es importante. Del 1 al 10, como fue nuestra atencion?" }
+          { type: "text", text: nodeText(runtime, "survey", "Tu opinion es importante. Del 1 al 10, como fue nuestra atencion?") }
         ]
       };
 
     case STEP.SURVEY: {
       const r = parseRating(input.normalized);
       if (!r) return fallback(session, "Necesito un numero del 1 al 10.");
+      const surveyNext = routeStep(runtime, "survey_done", STEP.MENU);
       resetSession(session);
-      return { actions: [{ type: "text", text: `Gracias por tu puntuacion ${r}/10.` }, ...mainMenu(profile, true)] };
+      if (surveyNext === STEP.MENU) {
+        return { actions: [{ type: "text", text: `Gracias por tu puntuacion ${r}/10.` }, ...mainMenu(profile, runtime, true)] };
+      }
+      return { actions: [{ type: "text", text: `Gracias por tu puntuacion ${r}/10.` }] };
     }
 
     default:
       move(session, STEP.MENU);
-      return { actions: mainMenu(profile) };
+      return { actions: mainMenu(profile, runtime) };
   }
 }
 
-function mainMenu(profile, withIntro = false) {
+function mainMenu(profile, runtime, withIntro = false) {
   const actions = [];
   if (withIntro) {
-    actions.push({ type: "text", text: "Por favor selecciona una opcion." });
+    actions.push({ type: "text", text: nodeText(runtime, "menu", "Por favor selecciona una opcion.") });
   } else if (!profile.welcomed) {
     const name = profile.firstName ? `${profile.firstName}, ` : "";
     actions.push({ type: "text", text: `Hola ${name}te damos la bienvenida al sistema de pedidos de ${config.businessDisplayName}.` });
     profile.welcomed = true;
   }
-  actions.push(menuButtons());
+  actions.push(menuButtons(runtime));
   return actions;
 }
 
-function menuButtons() {
-  return buildInteractive("Selecciona una opcion:", [
+function menuButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "menu", "Selecciona una opcion:"), [
     { id: "menu_make_order", title: "Hacer pedido" },
     { id: "menu_web", title: "Web/MercadoLibre" },
     { id: "menu_support", title: "Consultas/Reclamos" }
   ]);
 }
 
-function modeButtons() {
-  return buildInteractive("Modalidad:", [
+function modeButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "mode", "Modalidad:"), [
     { id: "order_mode_delivery", title: "Envios" },
     { id: "order_mode_pickup", title: "Retiro tienda" }
   ]);
 }
 
-function zoneButtons() {
-  return buildInteractive("Selecciona zona:", [
+function zoneButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "zone", "Selecciona zona:"), [
     { id: "zone_norte", title: "Zona Norte" },
     { id: "zone_caba", title: "CABA" },
     { id: "zone_pilar", title: "Pilar" }
   ]);
 }
 
-function addressButtons() {
-  return buildInteractive("Direccion:", [
+function addressButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "address_decision", "Direccion:"), [
     { id: "addr_yes_saved", title: "Si misma dir" },
     { id: "addr_other", title: "Otra direccion" }
   ]);
 }
 
-function orderTypeButtons() {
-  return buildInteractive("Selecciona tipo:", [
+function orderTypeButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "order_type", "Selecciona tipo:"), [
     { id: "type_particular", title: "Particular" },
     { id: "type_obra_social", title: "Obra social" }
   ]);
 }
 
-function returningButtons() {
+function returningButtons(runtime) {
   return buildInteractive("Selecciona una opcion:", [
     { id: "return_continue", title: "Continuar" },
     { id: "return_new", title: "Nuevo pedido" }
   ]);
 }
 
-function itemDecisionButtons() {
-  return buildInteractive("Selecciona una opcion:", [
+function itemDecisionButtons(runtime) {
+  return buildInteractive(nodeText(runtime, "item_decision", "Selecciona una opcion:"), [
     { id: "items_done", title: "Pedido completo" },
     { id: "items_add", title: "Agregar producto" },
     { id: "items_cancel", title: "Cancelar" }
   ]);
 }
 
-function returningPrompt(profile) {
+function returningPrompt(profile, runtime) {
   const name = profile.firstName ? `${profile.firstName}, ` : "";
   const last = profile.lastOrder || {};
   const lines = [
@@ -426,7 +436,7 @@ function returningPrompt(profile) {
   if (last.address) lines.push(`Direccion: ${last.address}`);
   if (last.branch) lines.push(`Sucursal: ${last.branch}`);
   lines.push("", "Continuamos con estos datos?");
-  return [{ type: "text", text: lines.join("\n") }, returningButtons()];
+  return [{ type: "text", text: lines.join("\n") }, returningButtons(runtime)];
 }
 
 function continueSummary(last) {
@@ -647,6 +657,31 @@ function recoverFromInput(session, input) {
   }
 
   return false;
+}
+
+function nodeText(runtime, nodeId, fallbackText) {
+  const message = String(runtime?.nodeMessages?.[nodeId] || "").trim();
+  return message || fallbackText;
+}
+
+function routeStep(runtime, routeKey, fallbackStep) {
+  const next = String(runtime?.routes?.[routeKey] || "").trim();
+  if (STEP_VALUES.has(next)) {
+    return next;
+  }
+  return fallbackStep;
+}
+
+function moveByRoute(session, runtime, routeKey, fallbackStep) {
+  move(session, routeStep(runtime, routeKey, fallbackStep));
+}
+
+function renderNodeTemplate(template, values) {
+  let out = String(template || "");
+  for (const [key, value] of Object.entries(values || {})) {
+    out = out.replace(new RegExp(`\\{${key}\\}`, "g"), String(value || ""));
+  }
+  return out;
 }
 
 function buildInteractive(text, buttons) {

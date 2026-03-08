@@ -4,7 +4,7 @@ const express = require("express");
 const { config } = require("./config");
 const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
-const { getFlowCatalog } = require("./flow_catalog");
+const { getWorkflowCatalog, saveWorkflowCatalog, resetWorkflowCatalog } = require("./workflow_store");
 const { renderFlowDashboard } = require("./flow_dashboard");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
@@ -27,8 +27,34 @@ app.get("/", (_req, res) => {
   res.status(200).type("html").send(renderFlowDashboard());
 });
 
-app.get("/api/flows", (_req, res) => {
-  res.status(200).json(getFlowCatalog());
+app.get("/api/flows", async (_req, res) => {
+  try {
+    const catalog = await getWorkflowCatalog();
+    res.status(200).json(catalog);
+  } catch (error) {
+    console.error("Failed loading workflows", error);
+    res.status(500).json({ error: "flow_load_failed" });
+  }
+});
+
+app.put("/api/flows", async (req, res) => {
+  try {
+    const saved = await saveWorkflowCatalog(req.body || {});
+    res.status(200).json(saved);
+  } catch (error) {
+    console.error("Failed saving workflows", error);
+    res.status(500).json({ error: "flow_save_failed" });
+  }
+});
+
+app.post("/api/flows/reset", async (_req, res) => {
+  try {
+    const reset = await resetWorkflowCatalog();
+    res.status(200).json(reset);
+  } catch (error) {
+    console.error("Failed resetting workflows", error);
+    res.status(500).json({ error: "flow_reset_failed" });
+  }
 });
 
 app.get("/webhook", (req, res) => {
