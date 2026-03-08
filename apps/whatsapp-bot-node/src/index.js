@@ -6,6 +6,7 @@ const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
 const { getWorkflowCatalog, saveWorkflowCatalog, resetWorkflowCatalog } = require("./workflow_store");
 const { renderFlowDashboard } = require("./flow_dashboard");
+const { renderFlowClientDashboard } = require("./flow_client_dashboard");
 const { renderConversationDashboard } = require("./conversation_dashboard");
 const { renderControlCenterDashboard } = require("./control_center_dashboard");
 const {
@@ -39,6 +40,10 @@ app.get("/", (_req, res) => {
 
 app.get("/flows", (_req, res) => {
   res.status(200).type("html").send(renderFlowDashboard());
+});
+
+app.get("/flows/client", (_req, res) => {
+  res.status(200).type("html").send(renderFlowClientDashboard());
 });
 
 app.get("/conversations", (_req, res) => {
