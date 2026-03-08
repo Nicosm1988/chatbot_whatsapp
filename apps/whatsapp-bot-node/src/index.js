@@ -43,7 +43,7 @@ app.get("/flows", (_req, res) => {
 });
 
 app.get("/flows/client", (_req, res) => {
-  res.status(200).type("html").send(renderFlowClientDashboard());
+  res.redirect(302, "/flows");
 });
 
 app.get("/conversations", (_req, res) => {
