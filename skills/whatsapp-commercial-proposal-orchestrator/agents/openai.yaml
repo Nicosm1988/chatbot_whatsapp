@@ -1,0 +1,4 @@
+interface:
+  display_name: "WhatsApp Proposal Orchestrator"
+  short_description: "Coordinate all proposal skills end-to-end"
+  default_prompt: "Crear propuesta comercial completa para cliente de chatbot WhatsApp"

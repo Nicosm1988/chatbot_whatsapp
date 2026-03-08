@@ -44,3 +44,8 @@ Build a production WhatsApp chatbot for **Farmacia Delko** with:
 - Role-based access for editor vs client-only viewers.
 - SLA dashboard for human handoff queues.
 - Campaign export layer (segments from conversation outcomes).
+
+## Commercial proposal system
+- Added a dedicated skills pack under `skills/whatsapp-commercial-proposal-*`.
+- Added proposal artifacts under `proposals/`.
+- Commercial workflow now supports end-to-end generation: discovery -> pricing -> ROI -> implementation -> risk -> writing -> negotiation.

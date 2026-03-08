@@ -1,0 +1,4 @@
+interface:
+  display_name: "Risk and Governance"
+  short_description: "Define risk controls and operating guardrails"
+  default_prompt: "Crear seccion de riesgos y gobierno para propuesta"

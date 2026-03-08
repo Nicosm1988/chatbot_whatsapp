@@ -1,0 +1,4 @@
+interface:
+  display_name: "ROI Modeling"
+  short_description: "Estimate business impact and payback"
+  default_prompt: "Calcular ROI para propuesta comercial del bot"

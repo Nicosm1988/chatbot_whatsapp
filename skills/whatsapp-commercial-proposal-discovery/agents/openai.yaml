@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commercial Discovery"
+  short_description: "Collect business context for proposal scope"
+  default_prompt: "Definir discovery comercial para propuesta WhatsApp"

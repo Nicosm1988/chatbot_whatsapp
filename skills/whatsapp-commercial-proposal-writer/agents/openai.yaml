@@ -1,0 +1,4 @@
+interface:
+  display_name: "Proposal Writer"
+  short_description: "Write executive-ready commercial proposal"
+  default_prompt: "Redactar propuesta comercial final para cliente"

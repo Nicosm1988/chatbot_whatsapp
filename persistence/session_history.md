@@ -16,6 +16,16 @@
 - Hardened conversation connectivity with API/KV timeouts, retries and fallback cache to avoid infinite `Cargando`.
 - Optimized audit reads for conversations/summary/detail with batched loading.
 - Aligned left-side counters with active board context (`Casos` vs `Registro de Pruebas`) to avoid count/list mismatch.
+- Created a full commercial proposal skills pack with 8 new skills and agents:
+  - orchestrator
+  - discovery
+  - packaging/pricing
+  - ROI
+  - implementation
+  - risk/governance
+  - proposal writer
+  - negotiation/closing
+- Added `proposals/Farmacia_Delko_Propuesta_Comercial_v1.md` as initial client-facing commercial proposal draft.
 
 ## Maintenance rule
 After every major product change, update:

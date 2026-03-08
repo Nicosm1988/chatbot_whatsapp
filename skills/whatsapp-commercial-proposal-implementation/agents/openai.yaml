@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation Plan"
+  short_description: "Create rollout plan with milestones"
+  default_prompt: "Armar plan de implementacion para propuesta comercial"

@@ -46,5 +46,11 @@
     "meta_official_go_live",
     "human_handoff_sla",
     "campaign_exports"
-  ]
+  ],
+  "commercialProposalSystem": {
+    "enabled": true,
+    "skillsPack": "skills/whatsapp-commercial-proposal-*",
+    "proposalFolder": "proposals/",
+    "latestProposal": "proposals/Farmacia_Delko_Propuesta_Comercial_v1.md"
+  }
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Negotiation and Closing"
+  short_description: "Handle objections and close the deal"
+  default_prompt: "Preparar cierre comercial y manejo de objeciones"

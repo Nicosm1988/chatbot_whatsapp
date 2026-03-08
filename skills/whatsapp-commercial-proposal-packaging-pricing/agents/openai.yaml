@@ -1,0 +1,4 @@
+interface:
+  display_name: "Packaging and Pricing"
+  short_description: "Build commercial plans and pricing strategy"
+  default_prompt: "Crear paquetes y precios para propuesta de chatbot WhatsApp"
