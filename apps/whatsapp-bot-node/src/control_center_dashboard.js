@@ -113,7 +113,6 @@ function renderControlCenterDashboard() {
       </div>
       <nav class="nav">
         <button class="btn active" data-view="editor">Editor de Flujos (n8n)</button>
-        <button class="btn" data-view="map">Mapa para Cliente</button>
         <button class="btn" data-view="conversations">Casos de Clientes</button>
         <button class="btn" data-view="tests">Registro de Pruebas</button>
       </nav>
@@ -134,7 +133,6 @@ function renderControlCenterDashboard() {
         </div>
         <div class="quick">
           <a class="link" target="_blank" href="/flows">Abrir editor</a>
-          <a class="link" target="_blank" href="/flows/client">Abrir mapa</a>
           <a class="link" target="_blank" href="/conversations">Abrir casos</a>
           <button class="btn" id="b-refresh" style="padding:6px 10px"><span class="live-dot"></span>Actualizar datos</button>
         </div>
@@ -146,7 +144,6 @@ function renderControlCenterDashboard() {
   <script>
     var views={
       editor:{src:"/flows",title:"Editor de Flujos (n8n)",sub:"Aqui podes mover nodos, editar mensajes y conectar caminos."},
-      map:{src:"/flows/client",title:"Mapa para Cliente",sub:"Vista limpia y explicativa de todos los caminos activos."},
       conversations:{src:"/conversations",title:"Casos de Clientes",sub:"Seguimiento claro de cada conversacion y resolucion."},
       tests:{src:"/conversations?tag=test_run",title:"Registro de Pruebas",sub:"Historial de pruebas y validaciones del equipo."}
     };
@@ -159,8 +156,24 @@ function renderControlCenterDashboard() {
     var sOpen=document.getElementById("s-open");
     var sAgent=document.getElementById("s-agent");
     var sTests=document.getElementById("s-tests");
+    var summaryAbortController = null;
 
     function setStatus(text){statusEl.textContent=text;}
+
+    async function fetchJsonWithTimeout(url, timeoutMs){
+      if(summaryAbortController){
+        summaryAbortController.abort();
+      }
+      summaryAbortController = new AbortController();
+      var timeout = setTimeout(function(){ summaryAbortController.abort(); }, timeoutMs);
+      try{
+        var res = await fetch(url,{cache:"no-store",signal:summaryAbortController.signal});
+        if(!res.ok)throw new Error("status_"+res.status);
+        return await res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
 
     function activate(view){
       var meta=views[view]||views.editor;
@@ -175,16 +188,14 @@ function renderControlCenterDashboard() {
     async function loadSummary(){
       setStatus("Actualizando datos...");
       try{
-        var res=await fetch("/api/conversations/summary",{cache:"no-store"});
-        if(!res.ok)throw new Error("status_"+res.status);
-        var s=await res.json();
+        var s=await fetchJsonWithTimeout("/api/conversations/summary",9000);
         sTotal.textContent=String(s.total||0);
         sOpen.textContent=String(s.open||0);
         sAgent.textContent=String(s.agentPending||0);
         sTests.textContent=String(s.testRuns||0);
         setStatus("Ultima actividad: "+(s.lastEventAt?new Date(s.lastEventAt).toLocaleString("es-AR"):"-"));
       }catch(err){
-        setStatus("No se pudieron actualizar los datos");
+        setStatus("No se pudieron actualizar los datos (timeout/conectividad)");
         console.error(err);
       }
     }

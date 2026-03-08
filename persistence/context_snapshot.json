@@ -9,6 +9,9 @@
       "flowEditor": "/flows",
       "flowClient": "/flows/client",
       "conversations": "/conversations"
+    },
+    "controlCenterNavigation": {
+      "showsFlowClientMap": false
     }
   },
   "ui": {
@@ -29,7 +32,12 @@
   "audit": {
     "conversationTimeline": true,
     "testTag": "test_run",
-    "storage": "upstash_kv_or_memory_fallback"
+    "storage": "upstash_kv_or_memory_fallback",
+    "connectivityHardening": {
+      "kvTimeoutMsDefault": 3500,
+      "kvRetriesDefault": 1,
+      "frontendApiTimeoutMs": 9000
+    }
   },
   "business": {
     "displayName": "Farmacia Delko"

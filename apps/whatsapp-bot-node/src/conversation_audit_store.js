@@ -5,6 +5,9 @@ const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
 const AUDIT_PREFIX = String(process.env.AUDIT_KV_PREFIX || "wa:audit:").trim();
 const INDEX_LIMIT = Number(process.env.AUDIT_INDEX_LIMIT || 1000);
 const DETAIL_EVENTS_LIMIT = Number(process.env.AUDIT_DETAIL_EVENTS_LIMIT || 250);
+const SUMMARY_SCAN_LIMIT = Number(process.env.AUDIT_SUMMARY_SCAN_LIMIT || 300);
+const KV_REQUEST_TIMEOUT_MS = Number(process.env.AUDIT_KV_TIMEOUT_MS || 3500);
+const KV_REQUEST_RETRIES = Number(process.env.AUDIT_KV_RETRIES || 1);
 const TEST_CONTACT_IDS = new Set(
   String(process.env.TEST_CONTACT_IDS || "")
     .split(",")
@@ -20,6 +23,10 @@ function nowIso() {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function keyActive(contactId) {
@@ -186,51 +193,129 @@ async function kvGetJson(key) {
     return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
   }
 
-  try {
-    const response = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
-      headers: {
-        Authorization: `Bearer ${KV_REST_API_TOKEN}`
-      },
-      cache: "no-store"
-    });
+  const endpoint = `${KV_REST_API_URL}/get/${encodeURIComponent(key)}`;
+  let lastError = null;
 
-    if (!response.ok) {
-      return null;
+  for (let attempt = 0; attempt <= KV_REQUEST_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), KV_REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${KV_REST_API_TOKEN}`
+        },
+        cache: "no-store",
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        if (response.status >= 500 && attempt < KV_REQUEST_RETRIES) {
+          await sleep(120 * (attempt + 1));
+          continue;
+        }
+        return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+      }
+
+      const data = await response.json();
+      if (data?.result === null || data?.result === undefined) {
+        return null;
+      }
+
+      const result =
+        typeof data.result === "string"
+          ? JSON.parse(data.result)
+          : typeof data.result === "object"
+            ? data.result
+            : null;
+
+      if (result !== null) {
+        memoryKv.set(key, clone(result));
+      }
+
+      return result;
+    } catch (error) {
+      clearTimeout(timeout);
+      lastError = error;
+      if (attempt < KV_REQUEST_RETRIES) {
+        await sleep(120 * (attempt + 1));
+        continue;
+      }
+      console.warn("Audit KV read failed:", error.message);
+      return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
     }
-
-    const data = await response.json();
-    if (data?.result === null || data?.result === undefined) {
-      return null;
-    }
-
-    if (typeof data.result === "string") {
-      return JSON.parse(data.result);
-    }
-
-    return typeof data.result === "object" ? data.result : null;
-  } catch (error) {
-    console.warn("Audit KV read failed:", error.message);
-    return null;
   }
+
+  if (lastError) {
+    console.warn("Audit KV read failed:", lastError.message);
+  }
+
+  return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
 }
 
 async function kvSetJson(key, value) {
+  memoryKv.set(key, clone(value));
+
   if (!KV_ENABLED) {
-    memoryKv.set(key, clone(value));
     return;
   }
 
-  try {
-    const encoded = encodeURIComponent(JSON.stringify(value));
-    await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}/${encoded}`, {
-      headers: {
-        Authorization: `Bearer ${KV_REST_API_TOKEN}`
-      },
-      cache: "no-store"
-    });
-  } catch (error) {
-    console.warn("Audit KV write failed:", error.message);
+  const encoded = encodeURIComponent(JSON.stringify(value));
+  const endpoint = `${KV_REST_API_URL}/set/${encodeURIComponent(key)}/${encoded}`;
+
+  for (let attempt = 0; attempt <= KV_REQUEST_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), KV_REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${KV_REST_API_TOKEN}`
+        },
+        cache: "no-store",
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (response.ok) {
+        return;
+      }
+      if (attempt < KV_REQUEST_RETRIES && response.status >= 500) {
+        await sleep(120 * (attempt + 1));
+        continue;
+      }
+      console.warn("Audit KV write failed with status:", response.status);
+      return;
+    } catch (error) {
+      clearTimeout(timeout);
+      if (attempt < KV_REQUEST_RETRIES) {
+        await sleep(120 * (attempt + 1));
+        continue;
+      }
+      console.warn("Audit KV write failed:", error.message);
+      return;
+    }
   }
+}
+
+async function loadConversationsByIds(ids, batchSize = 20) {
+  const output = [];
+  for (let index = 0; index < ids.length; index += batchSize) {
+    const chunk = ids.slice(index, index + batchSize);
+    const values = await Promise.all(chunk.map(id => getConversation(id)));
+    output.push(...values);
+  }
+  return output;
+}
+
+async function loadJsonByKeys(keys, batchSize = 30) {
+  const output = [];
+  for (let index = 0; index < keys.length; index += batchSize) {
+    const chunk = keys.slice(index, index + batchSize);
+    const values = await Promise.all(chunk.map(key => kvGetJson(key)));
+    output.push(...values);
+  }
+  return output;
 }
 
 async function getConversation(conversationId) {
@@ -506,12 +591,13 @@ async function listConversations({ limit = 60, status = "", contactId = "", tag 
   const ids = normalizeArray(
     await kvGetJson(contactId ? keyContactConversations(contactId) : keyAllConversations())
   );
+  const idsToLoad = ids.slice(0, Math.max(max * 4, max));
+  const conversations = await loadConversationsByIds(idsToLoad, 20);
   const output = [];
-  for (const id of ids) {
+  for (const conv of conversations) {
     if (output.length >= max) {
       break;
     }
-    const conv = await getConversation(id);
     if (!conv) {
       continue;
     }
@@ -528,6 +614,8 @@ async function listConversations({ limit = 60, status = "", contactId = "", tag 
 
 async function getConversationSummary() {
   const ids = normalizeArray(await kvGetJson(keyAllConversations()));
+  const scanIds = ids.slice(0, Math.max(1, SUMMARY_SCAN_LIMIT));
+  const conversations = await loadConversationsByIds(scanIds, 20);
   const summary = {
     total: 0,
     open: 0,
@@ -537,8 +625,7 @@ async function getConversationSummary() {
     lastEventAt: null
   };
 
-  for (const id of ids) {
-    const conv = await getConversation(id);
+  for (const conv of conversations) {
     if (!conv) {
       continue;
     }
@@ -569,14 +656,12 @@ async function getConversationDetail(conversationId, limit = DETAIL_EVENTS_LIMIT
 
   const maxEvents = Math.max(1, Math.min(Number(limit || DETAIL_EVENTS_LIMIT), 1000));
   const start = Math.max(1, conversation.eventCount - maxEvents + 1);
-  const events = [];
-
+  const keys = [];
   for (let seq = start; seq <= conversation.eventCount; seq += 1) {
-    const event = await kvGetJson(keyEvent(conversation.id, seq));
-    if (event) {
-      events.push(event);
-    }
+    keys.push(keyEvent(conversation.id, seq));
   }
+  const rawEvents = await loadJsonByKeys(keys, 30);
+  const events = rawEvents.filter(Boolean);
 
   return {
     conversation,

@@ -12,6 +12,9 @@
 - Restored editing/moving capability by exposing editor again in central board.
 - Applied dark mode across central board, conversation board, and client map.
 - Added persistent project memory files in `docs/` and `persistence/`.
+- Removed `Mapa para Cliente` from main client board navigation.
+- Hardened conversation connectivity with API/KV timeouts, retries and fallback cache to avoid infinite `Cargando`.
+- Optimized audit reads for conversations/summary/detail with batched loading.
 
 ## Maintenance rule
 After every major product change, update:

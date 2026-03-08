@@ -116,6 +116,9 @@ function renderConversationDashboard() {
 
   <script>
     var currentId = null;
+    var currentRows = [];
+    var listAbortController = null;
+    var detailAbortController = null;
     var listEl = document.getElementById("list");
     var timelineEl = document.getElementById("timeline");
     var statusEl = document.getElementById("status");
@@ -130,6 +133,21 @@ function renderConversationDashboard() {
     function normalize(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
     function statusClass(status){if(status==="closed")return"closed";if(status==="agent_pending")return"pending";return"open";}
     function statusLabel(status){if(status==="closed")return"Cerrado";if(status==="agent_pending")return"Con asesor";return"Abierto";}
+    async function fetchJsonWithTimeout(url, timeoutMs, type){
+      var controller = new AbortController();
+      var timeout = setTimeout(function(){ controller.abort(); }, timeoutMs);
+      if(type==="list" && listAbortController){ listAbortController.abort(); }
+      if(type==="detail" && detailAbortController){ detailAbortController.abort(); }
+      if(type==="list"){ listAbortController = controller; }
+      if(type==="detail"){ detailAbortController = controller; }
+      try{
+        var res = await fetch(url,{cache:"no-store",signal:controller.signal});
+        if(!res.ok)throw new Error("status_"+res.status);
+        return await res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
     function friendlyStep(step){
       var map={menu:"Menu principal",mode:"Seleccion de modalidad",zone:"Seleccion de zona",address_decision:"Confirmacion de direccion",address_input:"Carga de direccion",pickup_branch:"Seleccion de sucursal",order_type:"Tipo de pedido",receta_upload:"Carga de receta",credential_upload:"Carga de credencial",item_input:"Carga de productos",item_decision:"Confirmacion de pedido",agent_continue:"Continuacion",agent_add_more:"Agregar mas",payment_proof:"Comprobante de pago",survey:"Encuesta final",returning:"Cliente recurrente"};
       return map[String(step||"").trim()]||"En curso";
@@ -184,6 +202,9 @@ function renderConversationDashboard() {
 
       if(!filtered.length){
         listEl.innerHTML='<div class="empty">No hay casos para mostrar con ese filtro.</div>';
+        if(!rows || !rows.length){
+          timelineEl.innerHTML='<div class="empty">Todavia no hay conversaciones registradas o hubo un problema de conectividad.</div>';
+        }
         return;
       }
 
@@ -198,7 +219,12 @@ function renderConversationDashboard() {
       }).join("");
 
       Array.from(listEl.querySelectorAll("[data-id]")).forEach(function(item){
-        item.onclick=function(){openConversation(item.getAttribute("data-id"));};
+        item.onclick=function(){
+          openConversation(item.getAttribute("data-id")).catch(function(err){
+            setStatus("Error al cargar detalle");
+            console.error(err);
+          });
+        };
       });
     }
 
@@ -233,22 +259,26 @@ function renderConversationDashboard() {
       var qs=new URLSearchParams({limit:"120"});
       if(qStatus.value)qs.set("status",qStatus.value);
       if(qTag.value)qs.set("tag",qTag.value);
-      var res=await fetch("/api/conversations?"+qs.toString(),{cache:"no-store"});
-      if(!res.ok)throw new Error("status_"+res.status);
-      var rows=await res.json();
-      renderList(rows||[]);
-      setStatus((rows||[]).length+" casos cargados");
-      if(!currentId&&rows&&rows[0]){openConversation(rows[0].id);}
+      var rows=await fetchJsonWithTimeout("/api/conversations?"+qs.toString(),9000,"list");
+      currentRows = Array.isArray(rows) ? rows : [];
+      if(currentId && !currentRows.some(function(r){ return r.id===currentId; })){
+        currentId = null;
+      }
+      renderList(currentRows);
+      setStatus(currentRows.length+" casos cargados");
+      if(!currentId && currentRows[0]){
+        await openConversation(currentRows[0].id,{skipReload:true});
+      } else if(!currentRows.length){
+        timelineEl.innerHTML='<div class="empty">Todavia no hay conversaciones registradas o hubo un problema de conectividad.</div>';
+      }
     }
 
-    async function openConversation(id){
+    async function openConversation(id, opts){
       currentId=id;
       setStatus("Cargando detalle del caso...");
-      var res=await fetch("/api/conversations/"+encodeURIComponent(id),{cache:"no-store"});
-      if(!res.ok)throw new Error("status_"+res.status);
-      var detail=await res.json();
+      var detail=await fetchJsonWithTimeout("/api/conversations/"+encodeURIComponent(id),9000,"detail");
       renderTimeline(detail||{});
-      await loadList();
+      renderList(currentRows);
       setStatus("Detalle actualizado");
     }
 

@@ -24,6 +24,8 @@ Build a production WhatsApp chatbot for **Farmacia Delko** with:
 - Simplified map for client (`/flows/client`)
 4. Conversation history must be centralized in the same Vercel board.
 5. Test runs must be visible in the dashboard (`tag=test_run`).
+6. `Mapa para Cliente` should not appear in the main control center navigation.
+7. Conversation APIs must fail fast on storage connectivity issues (no infinite loading state).
 
 ## Chatbot behavior constraints
 - Keep chat coherent, no unintended restart to greeting after valid choices.
