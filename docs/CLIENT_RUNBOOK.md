@@ -23,6 +23,7 @@ Last update: 2026-03-08
 - `BUSINESS_DISPLAY_NAME=Farmacia Delko`
 - `KV_REST_API_URL` (for persistent audit)
 - `KV_REST_API_TOKEN` (for persistent audit)
+- `AUDIT_ALLOW_MEMORY_FALLBACK=false` (en produccion)
 
 ## 4) Production checks before client handoff
 1. `/health` returns 200.
@@ -35,4 +36,5 @@ Last update: 2026-03-08
 - If webhook fails signature: check `WHATSAPP_APP_SECRET` mismatch.
 - If messages fail send: validate recipient format and Meta test recipient whitelist.
 - If history not persistent: verify Upstash KV env vars.
+- If API returns `audit_storage_unavailable`: storage persistente no configurado o inaccesible.
 - If flow map seems stale: open `/flows`, save once, refresh `/flows/client`.

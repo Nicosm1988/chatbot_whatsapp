@@ -37,6 +37,10 @@
       "kvTimeoutMsDefault": 3500,
       "kvRetriesDefault": 1,
       "frontendApiTimeoutMs": 9000
+    },
+    "productionRequirement": {
+      "persistentDbRequired": true,
+      "memoryFallbackAllowedInProduction": false
     }
   },
   "business": {

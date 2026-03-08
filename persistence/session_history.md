@@ -26,6 +26,10 @@
   - proposal writer
   - negotiation/closing
 - Added `proposals/Farmacia_Delko_Propuesta_Comercial_v1.md` as initial client-facing commercial proposal draft.
+- Enforced production-safe audit behavior:
+  - if persistent storage is not configured, conversation APIs return `audit_storage_unavailable` (503)
+  - memory fallback is disabled by default in production
+  - dashboard surfaces explicit storage status instead of inconsistent counts
 
 ## Maintenance rule
 After every major product change, update:

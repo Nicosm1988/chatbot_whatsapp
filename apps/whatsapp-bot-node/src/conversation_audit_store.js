@@ -1,6 +1,12 @@
 const KV_REST_API_URL = String(process.env.KV_REST_API_URL || "").trim().replace(/\/+$/, "");
 const KV_REST_API_TOKEN = String(process.env.KV_REST_API_TOKEN || "").trim();
 const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
+const IS_PRODUCTION_RUNTIME = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+const AUDIT_ALLOW_MEMORY_FALLBACK = String(
+  process.env.AUDIT_ALLOW_MEMORY_FALLBACK || (IS_PRODUCTION_RUNTIME ? "false" : "true")
+)
+  .trim()
+  .toLowerCase() === "true";
 
 const AUDIT_PREFIX = String(process.env.AUDIT_KV_PREFIX || "wa:audit:").trim();
 const INDEX_LIMIT = Number(process.env.AUDIT_INDEX_LIMIT || 1000);
@@ -16,6 +22,10 @@ const TEST_CONTACT_IDS = new Set(
 );
 
 const memoryKv = new Map();
+let lastKvReadError = "";
+let lastKvReadErrorAt = null;
+let lastKvWriteError = "";
+let lastKvWriteErrorAt = null;
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,6 +37,32 @@ function clone(value) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function createStorageUnavailableError(reason) {
+  const error = new Error(`audit_storage_unavailable:${String(reason || "unknown")}`);
+  error.code = "audit_storage_unavailable";
+  return error;
+}
+
+function markReadError(error) {
+  lastKvReadError = String(error?.message || "kv_read_failed");
+  lastKvReadErrorAt = nowIso();
+}
+
+function markWriteError(error) {
+  lastKvWriteError = String(error?.message || "kv_write_failed");
+  lastKvWriteErrorAt = nowIso();
+}
+
+function clearReadError() {
+  lastKvReadError = "";
+  lastKvReadErrorAt = null;
+}
+
+function clearWriteError() {
+  lastKvWriteError = "";
+  lastKvWriteErrorAt = null;
 }
 
 function keyActive(contactId) {
@@ -190,7 +226,10 @@ function normalizeContact(profile, contactId, contactName) {
 
 async function kvGetJson(key) {
   if (!KV_ENABLED) {
-    return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+    if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+      return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+    }
+    throw createStorageUnavailableError("kv_not_configured");
   }
 
   const endpoint = `${KV_REST_API_URL}/get/${encodeURIComponent(key)}`;
@@ -215,11 +254,18 @@ async function kvGetJson(key) {
           await sleep(120 * (attempt + 1));
           continue;
         }
-        return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+        const statusError = new Error(`kv_get_status_${response.status}`);
+        markReadError(statusError);
+        if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+          console.warn("Audit KV read status fallback:", statusError.message);
+          return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+        }
+        throw createStorageUnavailableError(statusError.message);
       }
 
       const data = await response.json();
       if (data?.result === null || data?.result === undefined) {
+        clearReadError();
         return null;
       }
 
@@ -234,6 +280,7 @@ async function kvGetJson(key) {
         memoryKv.set(key, clone(result));
       }
 
+      clearReadError();
       return result;
     } catch (error) {
       clearTimeout(timeout);
@@ -242,23 +289,37 @@ async function kvGetJson(key) {
         await sleep(120 * (attempt + 1));
         continue;
       }
-      console.warn("Audit KV read failed:", error.message);
-      return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+      markReadError(error);
+      if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+        console.warn("Audit KV read failed:", error.message);
+        return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+      }
+      throw createStorageUnavailableError(error.message || "kv_get_failed");
     }
   }
 
   if (lastError) {
-    console.warn("Audit KV read failed:", lastError.message);
+    markReadError(lastError);
+    if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+      console.warn("Audit KV read failed:", lastError.message);
+      return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+    }
+    throw createStorageUnavailableError(lastError.message || "kv_get_failed");
   }
 
-  return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+  if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+    return memoryKv.has(key) ? clone(memoryKv.get(key)) : null;
+  }
+  throw createStorageUnavailableError("kv_get_failed_unknown");
 }
 
 async function kvSetJson(key, value) {
-  memoryKv.set(key, clone(value));
-
   if (!KV_ENABLED) {
-    return;
+    if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+      memoryKv.set(key, clone(value));
+      return;
+    }
+    throw createStorageUnavailableError("kv_not_configured");
   }
 
   const encoded = encodeURIComponent(JSON.stringify(value));
@@ -278,24 +339,43 @@ async function kvSetJson(key, value) {
       });
       clearTimeout(timeout);
       if (response.ok) {
+        memoryKv.set(key, clone(value));
+        clearWriteError();
         return;
       }
       if (attempt < KV_REQUEST_RETRIES && response.status >= 500) {
         await sleep(120 * (attempt + 1));
         continue;
       }
-      console.warn("Audit KV write failed with status:", response.status);
-      return;
+      const statusError = new Error(`kv_set_status_${response.status}`);
+      markWriteError(statusError);
+      if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+        console.warn("Audit KV write status fallback:", statusError.message);
+        memoryKv.set(key, clone(value));
+        return;
+      }
+      throw createStorageUnavailableError(statusError.message);
     } catch (error) {
       clearTimeout(timeout);
       if (attempt < KV_REQUEST_RETRIES) {
         await sleep(120 * (attempt + 1));
         continue;
       }
-      console.warn("Audit KV write failed:", error.message);
-      return;
+      markWriteError(error);
+      if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+        console.warn("Audit KV write failed:", error.message);
+        memoryKv.set(key, clone(value));
+        return;
+      }
+      throw createStorageUnavailableError(error.message || "kv_set_failed");
     }
   }
+
+  if (AUDIT_ALLOW_MEMORY_FALLBACK) {
+    memoryKv.set(key, clone(value));
+    return;
+  }
+  throw createStorageUnavailableError("kv_set_failed_unknown");
 }
 
 async function loadConversationsByIds(ids, batchSize = 20) {
@@ -669,11 +749,27 @@ async function getConversationDetail(conversationId, limit = DETAIL_EVENTS_LIMIT
   };
 }
 
+function getAuditStorageStatus() {
+  return {
+    kvEnabled: KV_ENABLED,
+    memoryFallbackEnabled: AUDIT_ALLOW_MEMORY_FALLBACK,
+    persistentStorage: KV_ENABLED,
+    mode: KV_ENABLED ? "kv" : AUDIT_ALLOW_MEMORY_FALLBACK ? "memory_fallback" : "unavailable",
+    warnings: {
+      lastKvReadError,
+      lastKvReadErrorAt,
+      lastKvWriteError,
+      lastKvWriteErrorAt
+    }
+  };
+}
+
 module.exports = {
   recordInboundMessage,
   recordFlowTransition,
   recordOutboundMessage,
   listConversations,
   getConversationDetail,
-  getConversationSummary
+  getConversationSummary,
+  getAuditStorageStatus
 };

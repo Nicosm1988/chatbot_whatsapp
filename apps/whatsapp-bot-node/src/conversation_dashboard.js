@@ -134,6 +134,16 @@ function renderConversationDashboard() {
     function normalize(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
     function statusClass(status){if(status==="closed")return"closed";if(status==="agent_pending")return"pending";return"open";}
     function statusLabel(status){if(status==="closed")return"Cerrado";if(status==="agent_pending")return"Con asesor";return"Abierto";}
+    function handleLoadError(err){
+      if(String(err&&err.message||"").includes("status_503")){
+        setStatus("Historial no disponible: falta base de datos persistente");
+        listEl.innerHTML='<div class="empty">No hay base de datos persistente configurada para historial.</div>';
+        timelineEl.innerHTML='<div class="empty">Configura storage persistente para ver conversaciones historicas.</div>';
+      } else {
+        setStatus("Error");
+      }
+      console.error(err);
+    }
     async function fetchJsonWithTimeout(url, timeoutMs, type){
       var controller = new AbortController();
       var timeout = setTimeout(function(){ controller.abort(); }, timeoutMs);
@@ -221,10 +231,7 @@ function renderConversationDashboard() {
 
       Array.from(listEl.querySelectorAll("[data-id]")).forEach(function(item){
         item.onclick=function(){
-          openConversation(item.getAttribute("data-id")).catch(function(err){
-            setStatus("Error al cargar detalle");
-            console.error(err);
-          });
+          openConversation(item.getAttribute("data-id")).catch(handleLoadError);
         };
       });
     }
@@ -283,10 +290,10 @@ function renderConversationDashboard() {
       setStatus("Detalle actualizado");
     }
 
-    bRefresh.onclick=function(){loadList().catch(function(err){setStatus("Error");console.error(err);});};
-    qStatus.onchange=function(){loadList().catch(function(err){setStatus("Error");console.error(err);});};
-    qTag.onchange=function(){loadList().catch(function(err){setStatus("Error");console.error(err);});};
-    qContact.onkeydown=function(ev){if(ev.key==="Enter"){loadList().catch(function(err){setStatus("Error");console.error(err);});}};
+    bRefresh.onclick=function(){loadList().catch(handleLoadError);};
+    qStatus.onchange=function(){loadList().catch(handleLoadError);};
+    qTag.onchange=function(){loadList().catch(handleLoadError);};
+    qContact.onkeydown=function(ev){if(ev.key==="Enter"){loadList().catch(handleLoadError);}};
 
     var init=new URLSearchParams(window.location.search||"");
     if(init.get("status"))qStatus.value=init.get("status");
@@ -303,7 +310,7 @@ function renderConversationDashboard() {
       setStatus("Mostrando solo conversaciones de pruebas");
     }
 
-    loadList().catch(function(err){setStatus("Error al cargar");console.error(err);});
+    loadList().catch(handleLoadError);
   </script>
 </body>
 </html>`;

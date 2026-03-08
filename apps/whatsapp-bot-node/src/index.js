@@ -15,7 +15,8 @@ const {
   recordOutboundMessage,
   listConversations,
   getConversationDetail,
-  getConversationSummary
+  getConversationSummary,
+  getAuditStorageStatus
 } = require("./conversation_audit_store");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
@@ -80,6 +81,33 @@ app.post("/api/flows/reset", async (_req, res) => {
   }
 });
 
+function isAuditStorageUnavailableError(error) {
+  return (
+    error?.code === "audit_storage_unavailable" ||
+    String(error?.message || "").includes("audit_storage_unavailable")
+  );
+}
+
+function sendConversationApiError(res, error, fallbackCode) {
+  if (isAuditStorageUnavailableError(error)) {
+    return res.status(503).json({
+      error: "audit_storage_unavailable",
+      detail: "Se requiere storage persistente para historial de conversaciones."
+    });
+  }
+  return res.status(500).json({ error: fallbackCode });
+}
+
+app.get("/api/system/storage", (_req, res) => {
+  try {
+    const status = getAuditStorageStatus();
+    res.status(200).json(status);
+  } catch (error) {
+    console.error("Failed loading storage status", error);
+    res.status(500).json({ error: "storage_status_failed" });
+  }
+});
+
 app.get("/api/conversations", async (req, res) => {
   try {
     const conversations = await listConversations({
@@ -91,7 +119,7 @@ app.get("/api/conversations", async (req, res) => {
     res.status(200).json(conversations);
   } catch (error) {
     console.error("Failed listing conversations", error);
-    res.status(500).json({ error: "conversation_list_failed" });
+    sendConversationApiError(res, error, "conversation_list_failed");
   }
 });
 
@@ -101,7 +129,7 @@ app.get("/api/conversations/summary", async (_req, res) => {
     res.status(200).json(summary);
   } catch (error) {
     console.error("Failed loading conversation summary", error);
-    res.status(500).json({ error: "conversation_summary_failed" });
+    sendConversationApiError(res, error, "conversation_summary_failed");
   }
 });
 
@@ -117,7 +145,7 @@ app.get("/api/conversations/:conversationId", async (req, res) => {
     return res.status(200).json(detail);
   } catch (error) {
     console.error("Failed loading conversation detail", error);
-    return res.status(500).json({ error: "conversation_detail_failed" });
+    return sendConversationApiError(res, error, "conversation_detail_failed");
   }
 });
 
@@ -213,13 +241,18 @@ async function processIncomingEvent(payload) {
         const contactName = contactNamesByWaId.get(from) || "";
 
         const inboundText = extractInboundText(message);
-        const auditConversation = await recordInboundMessage({
-          contactId: mappedFrom,
-          contactName,
-          inboundText,
-          inboundMessage: message,
-          messageId
-        });
+        let auditConversation = null;
+        try {
+          auditConversation = await recordInboundMessage({
+            contactId: mappedFrom,
+            contactName,
+            inboundText,
+            inboundMessage: message,
+            messageId
+          });
+        } catch (error) {
+          console.error("Audit inbound failed:", error?.message || error);
+        }
         const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
         const flowResult = await replyHandler({
           contactId: mappedFrom,
@@ -228,26 +261,38 @@ async function processIncomingEvent(payload) {
           inboundMessage: message
         });
 
-        await recordFlowTransition({
-          conversationId: auditConversation?.id,
-          flowMeta: flowResult?.meta
-        });
+        try {
+          await recordFlowTransition({
+            conversationId: auditConversation?.id,
+            flowMeta: flowResult?.meta
+          });
+        } catch (error) {
+          console.error("Audit flow transition failed:", error?.message || error);
+        }
 
         for (const action of flowResult.actions || []) {
           try {
             await dispatchActionWithRecipientFallback(mappedFrom, action);
-            await recordOutboundMessage({
-              conversationId: auditConversation?.id,
-              action,
-              status: "sent"
-            });
+            try {
+              await recordOutboundMessage({
+                conversationId: auditConversation?.id,
+                action,
+                status: "sent"
+              });
+            } catch (error) {
+              console.error("Audit outbound sent failed:", error?.message || error);
+            }
           } catch (error) {
-            await recordOutboundMessage({
-              conversationId: auditConversation?.id,
-              action,
-              status: "failed",
-              error: error?.message || "send_failed"
-            });
+            try {
+              await recordOutboundMessage({
+                conversationId: auditConversation?.id,
+                action,
+                status: "failed",
+                error: error?.message || "send_failed"
+              });
+            } catch (auditError) {
+              console.error("Audit outbound failure failed:", auditError?.message || auditError);
+            }
             throw error;
           }
         }

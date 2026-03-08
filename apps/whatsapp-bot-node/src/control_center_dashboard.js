@@ -191,6 +191,15 @@ function renderControlCenterDashboard() {
     async function loadSummary(){
       setStatus("Actualizando datos...");
       try{
+        var storage = await fetchJsonWithTimeout("/api/system/storage",7000).catch(function(){ return null; });
+        if(storage && storage.mode === "unavailable"){
+          sTotal.textContent="-";
+          sOpen.textContent="-";
+          sAgent.textContent="-";
+          sTests.textContent="-";
+          setStatus("Historial no disponible: falta base de datos persistente");
+          return;
+        }
         var qs = new URLSearchParams({limit:"200"});
         if(activeView === "tests"){
           qs.set("tag","test_run");
@@ -212,10 +221,15 @@ function renderControlCenterDashboard() {
         if(activeView === "tests"){
           setStatus("Pruebas visibles: "+total+(latest?" | Ultima actividad: "+new Date(latest).toLocaleString("es-AR"):""));
         } else {
-          setStatus("Casos visibles: "+total+(latest?" | Ultima actividad: "+new Date(latest).toLocaleString("es-AR"):""));
+          var modeLabel = storage && storage.mode === "memory_fallback" ? " | modo temporal" : "";
+          setStatus("Casos visibles: "+total+(latest?" | Ultima actividad: "+new Date(latest).toLocaleString("es-AR"):"")+modeLabel);
         }
       }catch(err){
-        setStatus("No se pudieron actualizar los datos (timeout/conectividad)");
+        if(String(err && err.message || "").includes("status_503")){
+          setStatus("Historial no disponible: falta base de datos persistente");
+        } else {
+          setStatus("No se pudieron actualizar los datos (timeout/conectividad)");
+        }
         console.error(err);
       }
     }
