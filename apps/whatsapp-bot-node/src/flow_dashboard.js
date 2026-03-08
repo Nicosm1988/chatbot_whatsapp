@@ -4,161 +4,172 @@ function renderFlowDashboard() {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flow Studio - n8n style</title>
+    <title>Flow Studio - n8n Canvas</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #12141a;
-        --panel: #1a1f2b;
-        --panel-2: #111827;
-        --card: #21293a;
-        --ink: #e7edf8;
-        --muted: #9fb1cc;
-        --stroke: #3a4458;
+        --bg: #0f131b;
+        --panel: #191f2b;
+        --stroke: #34435b;
+        --ink: #e9eef8;
+        --muted: #a6b7d0;
         --accent: #ff6d2d;
-        --accent-soft: rgba(255, 109, 45, 0.2);
-        --ok: #27c499;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
 
       body {
-        margin: 0;
-        min-height: 100vh;
         color: var(--ink);
         font-family: "Manrope", sans-serif;
-        background: radial-gradient(circle at 15% -10%, rgba(255, 109, 45, 0.18), transparent 38%), var(--bg);
+        background: radial-gradient(circle at 15% -5%, rgba(255, 109, 45, 0.18), transparent 33%), var(--bg);
       }
 
-      .wrap {
-        width: min(1500px, 96vw);
-        margin: 0 auto;
-        padding: 22px 0 34px;
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 10px;
+        gap: 10px;
       }
 
-      .header {
-        background: linear-gradient(135deg, rgba(37, 44, 59, 0.95), rgba(22, 27, 38, 0.95));
+      .topbar {
+        flex: 0 0 auto;
         border: 1px solid var(--stroke);
-        border-radius: 14px;
-        padding: 16px 18px;
-        box-shadow: 0 16px 35px rgba(0, 0, 0, 0.32);
+        border-radius: 12px;
+        background: linear-gradient(145deg, rgba(34, 41, 56, 0.95), rgba(21, 26, 36, 0.95));
+        padding: 10px 12px;
+      }
+
+      .title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
 
       .tag {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 5px 11px;
-        border-radius: 999px;
         border: 1px solid rgba(255, 109, 45, 0.5);
-        background: var(--accent-soft);
+        background: rgba(255, 109, 45, 0.18);
+        border-radius: 999px;
+        padding: 4px 10px;
         font-size: 11px;
         letter-spacing: .08em;
         text-transform: uppercase;
       }
 
-      h1 {
-        margin: 10px 0 8px;
-        font-size: clamp(1.3rem, 2.8vw, 2rem);
+      .title {
+        margin: 0;
+        font-size: 1rem;
       }
 
-      .sub {
-        margin: 0;
+      .subtitle {
+        margin: 5px 0 0;
         color: var(--muted);
-        max-width: 90ch;
+        font-size: 13px;
       }
 
       .toolbar {
-        margin-top: 15px;
+        margin-top: 10px;
         display: flex;
-        gap: 9px;
         flex-wrap: wrap;
+        gap: 8px;
       }
 
-      .wf-btn {
+      .btn {
         border: 1px solid var(--stroke);
-        background: #182031;
+        background: #141b29;
         color: var(--ink);
         border-radius: 10px;
-        padding: 8px 12px;
-        font-size: 13px;
+        padding: 7px 11px;
+        font-size: 12px;
         cursor: pointer;
       }
 
-      .wf-btn.active {
+      .btn.active {
         border-color: rgba(255, 109, 45, 0.75);
-        box-shadow: inset 0 0 0 1px rgba(255, 109, 45, 0.3);
+        box-shadow: inset 0 0 0 1px rgba(255, 109, 45, 0.35);
       }
 
-      .wf-btn.wf-btn-reset {
-        border-color: #51617f;
-        color: #d1ddf0;
-        background: #111a2a;
+      .btn.btn-secondary {
+        background: #101623;
+        color: #d1dbee;
       }
 
-      .layout {
-        margin-top: 14px;
-        display: grid;
-        grid-template-columns: 1.75fr 1fr;
-        gap: 14px;
+      .hidden-lines {
+        margin-top: 8px;
+        display: none;
+        gap: 6px;
+        flex-wrap: wrap;
       }
 
-      .panel {
+      .hidden-lines.visible {
+        display: flex;
+      }
+
+      .chip {
+        border: 1px dashed #566b8e;
+        background: #0f1828;
+        color: #c7d4ec;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .canvas-panel {
+        flex: 1 1 auto;
         border: 1px solid var(--stroke);
-        border-radius: 14px;
-        background: linear-gradient(160deg, var(--panel), #141a25);
-        padding: 14px;
-      }
-
-      .title {
-        margin: 0;
-        font-size: 14px;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-        color: #b8c8df;
-      }
-
-      .workflow-name {
-        margin: 10px 0 4px;
-        font-size: 1.2rem;
-      }
-
-      .workflow-desc {
-        margin: 0 0 10px;
-        color: var(--muted);
-      }
-
-      .canvas-shell {
-        border: 1px solid #2f3b52;
         border-radius: 12px;
         background:
-          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 22px 22px,
-          linear-gradient(0deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 22px 22px,
-          #0f1420;
-        overflow: auto;
-        padding: 12px;
-        min-height: 520px;
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+          linear-gradient(0deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+          #0d121c;
+        overflow: hidden;
+        position: relative;
       }
 
-      .canvas {
-        position: relative;
+      .canvas-viewport {
+        position: absolute;
+        inset: 0;
+      }
+
+      .scene {
+        position: absolute;
         transform-origin: top left;
       }
 
       .edges {
         position: absolute;
         inset: 0;
-        pointer-events: none;
+      }
+
+      .edge-item {
+        cursor: pointer;
+      }
+
+      .edge-item path.edge-path {
+        pointer-events: stroke;
       }
 
       .node {
         position: absolute;
-        border: 1px solid #43506a;
+        border: 1px solid #42526f;
         border-radius: 10px;
-        background: #1d2535;
-        box-shadow: 0 10px 22px rgba(3, 7, 14, 0.45);
+        background: #1e2738;
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45);
         overflow: hidden;
         cursor: grab;
         user-select: none;
@@ -168,7 +179,6 @@ function renderFlowDashboard() {
       .node.dragging {
         cursor: grabbing;
         border-color: #ffb58f;
-        box-shadow: 0 16px 28px rgba(0, 0, 0, 0.5);
       }
 
       .node-head {
@@ -176,9 +186,9 @@ function renderFlowDashboard() {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 9px;
-        border-bottom: 1px solid #3a465e;
-        background: linear-gradient(90deg, rgba(255, 109, 45, 0.25), rgba(255, 109, 45, 0.06));
+        padding: 0 8px;
+        border-bottom: 1px solid #3f4f69;
+        background: linear-gradient(90deg, rgba(255, 109, 45, 0.24), rgba(255, 109, 45, 0.05));
       }
 
       .node-kind {
@@ -188,209 +198,118 @@ function renderFlowDashboard() {
       }
 
       .node-body {
-        padding: 9px;
+        padding: 8px;
       }
 
       .node-title {
-        margin: 0 0 4px;
+        margin: 0 0 3px;
         font-size: 13px;
       }
 
       .node-sub {
         margin: 0;
-        color: #a8bcda;
+        color: #a7bcda;
         font-size: 12px;
-        line-height: 1.35;
-      }
-
-      .paths {
-        margin-top: 12px;
-        border-top: 1px solid #37445d;
-        padding-top: 10px;
-        display: grid;
-        gap: 6px;
-      }
-
-      .path-row {
-        display: flex;
-        gap: 8px;
-        font-size: 12px;
-        color: #a8bedb;
-        padding: 7px 8px;
-        border: 1px solid #364259;
-        border-radius: 9px;
-        background: #141b29;
-      }
-
-      .path-label {
-        color: #ffd0bc;
-        font-family: "JetBrains Mono", monospace;
-      }
-
-      .meta-list, .future-list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .meta-item, .future-item {
-        border: 1px solid #334258;
-        border-radius: 10px;
-        background: #141b29;
-        padding: 10px;
-      }
-
-      .meta-k {
-        color: #8ea3c2;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: .07em;
-      }
-
-      .meta-v {
-        margin-top: 5px;
-        font-size: 13px;
-        font-family: "JetBrains Mono", monospace;
-        word-break: break-word;
-      }
-
-      .future-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .future-title {
-        margin: 0;
-        font-size: 14px;
-      }
-
-      .future-status {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        border: 1px solid rgba(255, 109, 45, 0.5);
-        border-radius: 999px;
-        color: #ffd8c7;
-        padding: 2px 8px;
-      }
-
-      .future-detail {
-        margin: 8px 0 0;
-        color: #a6bbd8;
-        font-size: 13px;
-      }
-
-      @media (max-width: 1100px) {
-        .layout {
-          grid-template-columns: 1fr;
-        }
+        line-height: 1.3;
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <section class="header">
-        <span class="tag">n8n style workflow map</span>
-        <h1>Todos los caminos del bot, visualizados como canvas de nodos</h1>
-        <p class="sub">
-          Vista operativa del flujo real en produccion: nodos, ramas y loops tal como una orquestacion en n8n.
-        </p>
+    <div class="app">
+      <section class="topbar">
+        <div class="title-row">
+          <span class="tag">n8n-like canvas</span>
+          <h1 class="title" id="wf-title">Workflow</h1>
+        </div>
+        <p class="subtitle" id="wf-subtitle">Carga...</p>
         <div class="toolbar" id="toolbar"></div>
+        <div class="hidden-lines" id="hidden-lines"></div>
       </section>
-
-      <section class="layout">
-        <article class="panel">
-          <h2 class="title">Workflow Canvas</h2>
-          <h3 class="workflow-name" id="workflow-name">-</h3>
-          <p class="workflow-desc" id="workflow-desc">-</p>
-          <div id="canvas-host"></div>
-        </article>
-        <aside class="panel">
-          <h2 class="title">Arquitectura</h2>
-          <div class="meta-list" id="meta"></div>
-          <h2 class="title" style="margin-top:14px;">Roadmap</h2>
-          <div class="future-list" id="future"></div>
-        </aside>
-      </section>
+      <section class="canvas-panel" id="canvas-host"></section>
     </div>
 
     <script>
-      let payload = null;
-      let activeWorkflowId = null;
-      let layoutOverrides = {};
-      const LAYOUT_STORAGE_KEY = "n8n-style-layout-v1";
+      var LAYOUT_KEY = "n8n_layout_overrides_v2";
+      var HIDDEN_EDGES_KEY = "n8n_hidden_edges_v2";
 
-      const toolbar = document.getElementById("toolbar");
-      const workflowName = document.getElementById("workflow-name");
-      const workflowDesc = document.getElementById("workflow-desc");
-      const canvasHost = document.getElementById("canvas-host");
-      const meta = document.getElementById("meta");
-      const future = document.getElementById("future");
+      var payload = null;
+      var activeWorkflowId = null;
+      var layoutOverrides = {};
+      var hiddenEdgeOverrides = {};
+      var currentScale = 1;
+      var fitSceneFn = function () {};
+
+      var toolbar = document.getElementById("toolbar");
+      var hiddenLines = document.getElementById("hidden-lines");
+      var wfTitle = document.getElementById("wf-title");
+      var wfSubtitle = document.getElementById("wf-subtitle");
+      var canvasHost = document.getElementById("canvas-host");
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, Math.round(value)));
       }
 
-      function escapeHtml(text) {
-        return String(text || "")
+      function escapeHtml(value) {
+        return String(value || "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
+          .replace(/\\"/g, "&quot;")
           .replace(/'/g, "&#39;");
       }
 
-      function toMapById(nodes) {
-        const m = {};
-        nodes.forEach(function (n) { m[n.id] = n; });
-        return m;
-      }
-
-      function edgePath(from, to) {
-        const fromRight = to.x >= from.x;
-        const sx = fromRight ? (from.x + from.w) : from.x;
-        const sy = from.y + (from.h / 2);
-        const ex = fromRight ? to.x : (to.x + to.w);
-        const ey = to.y + (to.h / 2);
-        const spread = Math.max(80, Math.abs(ex - sx) * 0.45);
-        const c1x = fromRight ? sx + spread : sx - spread;
-        const c2x = fromRight ? ex - spread : ex + spread;
-        return "M " + sx + " " + sy + " C " + c1x + " " + sy + ", " + c2x + " " + ey + ", " + ex + " " + ey;
-      }
-
-      function loadLayoutOverrides() {
+      function safeParse(raw, fallback) {
         try {
-          const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
-          if (!raw) return {};
-          const parsed = JSON.parse(raw);
-          return parsed && typeof parsed === "object" ? parsed : {};
+          var parsed = JSON.parse(raw || "");
+          return parsed && typeof parsed === "object" ? parsed : fallback;
         } catch (_error) {
-          return {};
+          return fallback;
         }
       }
 
-      function saveLayoutOverrides() {
+      function saveLayout() {
         try {
-          localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layoutOverrides));
-        } catch (_error) {
-          // ignore storage errors
-        }
+          localStorage.setItem(LAYOUT_KEY, JSON.stringify(layoutOverrides));
+        } catch (_error) {}
       }
 
-      function getWorkflowOverride(workflowId) {
+      function saveHiddenEdges() {
+        try {
+          localStorage.setItem(HIDDEN_EDGES_KEY, JSON.stringify(hiddenEdgeOverrides));
+        } catch (_error) {}
+      }
+
+      function getWorkflow() {
+        var workflows = (payload && payload.workflows) || [];
+        return workflows.find(function (wf) { return wf.id === activeWorkflowId; }) || workflows[0] || null;
+      }
+
+      function edgeKey(edge) {
+        return edge.from + "|" + edge.to + "|" + (edge.label || "");
+      }
+
+      function getWorkflowLayoutMap(workflowId) {
         if (!layoutOverrides[workflowId]) {
           layoutOverrides[workflowId] = {};
         }
         return layoutOverrides[workflowId];
       }
 
-      function applyWorkflowLayout(wf) {
-        const width = (wf.canvas && wf.canvas.width) || 1200;
-        const height = (wf.canvas && wf.canvas.height) || 560;
-        const override = getWorkflowOverride(wf.id);
+      function getWorkflowHiddenMap(workflowId) {
+        if (!hiddenEdgeOverrides[workflowId]) {
+          hiddenEdgeOverrides[workflowId] = {};
+        }
+        return hiddenEdgeOverrides[workflowId];
+      }
+
+      function applyNodeLayout(wf) {
+        var map = getWorkflowLayoutMap(wf.id);
+        var width = (wf.canvas && wf.canvas.width) || 1200;
+        var height = (wf.canvas && wf.canvas.height) || 560;
         return (wf.nodes || []).map(function (n) {
-          const o = override[n.id] || {};
-          const x = typeof o.x === "number" ? o.x : n.x;
-          const y = typeof o.y === "number" ? o.y : n.y;
+          var ov = map[n.id] || {};
+          var x = typeof ov.x === "number" ? ov.x : n.x;
+          var y = typeof ov.y === "number" ? ov.y : n.y;
           return {
             id: n.id,
             title: n.title,
@@ -404,154 +323,112 @@ function renderFlowDashboard() {
         });
       }
 
+      function mapById(nodes) {
+        var map = {};
+        nodes.forEach(function (n) { map[n.id] = n; });
+        return map;
+      }
+
+      function edgePath(from, to) {
+        var fromRight = to.x >= from.x;
+        var sx = fromRight ? (from.x + from.w) : from.x;
+        var sy = from.y + (from.h / 2);
+        var ex = fromRight ? to.x : (to.x + to.w);
+        var ey = to.y + (to.h / 2);
+        var spread = Math.max(80, Math.abs(ex - sx) * 0.45);
+        var c1x = fromRight ? sx + spread : sx - spread;
+        var c2x = fromRight ? ex - spread : ex + spread;
+        return "M " + sx + " " + sy + " C " + c1x + " " + sy + ", " + c2x + " " + ey + ", " + ex + " " + ey;
+      }
+
       function renderToolbar() {
-        const workflows = payload.workflows || [];
-        const workflowButtons = workflows.map(function (wf) {
-          const active = wf.id === activeWorkflowId ? "active" : "";
-          return '<button class="wf-btn ' + active + '" data-id="' + wf.id + '">' + escapeHtml(wf.name) + '</button>';
+        var wf = getWorkflow();
+        if (!wf) return;
+
+        var workflows = payload.workflows || [];
+        var html = workflows.map(function (item) {
+          var active = item.id === wf.id ? "active" : "";
+          return '<button class="btn ' + active + '" data-action="switch" data-id="' + escapeHtml(item.id) + '">' + escapeHtml(item.name) + '</button>';
         }).join("");
 
-        toolbar.innerHTML = workflowButtons + '<button class="wf-btn wf-btn-reset" data-id="__reset">Reset posiciones</button>';
+        html += '<button class="btn btn-secondary" data-action="reset-nodes">Reset nodos</button>';
+        html += '<button class="btn btn-secondary" data-action="restore-lines">Restaurar lineas</button>';
 
-        Array.from(toolbar.querySelectorAll(".wf-btn")).forEach(function (btn) {
+        toolbar.innerHTML = html;
+
+        Array.from(toolbar.querySelectorAll(".btn")).forEach(function (btn) {
           btn.addEventListener("click", function () {
-            if (btn.dataset.id === "__reset") {
-              if (activeWorkflowId) {
-                delete layoutOverrides[activeWorkflowId];
-                saveLayoutOverrides();
-                render();
-              }
+            var action = btn.dataset.action;
+            if (action === "switch") {
+              activeWorkflowId = btn.dataset.id;
+              renderAll();
               return;
             }
-            activeWorkflowId = btn.dataset.id;
-            render();
+            if (action === "reset-nodes") {
+              delete layoutOverrides[wf.id];
+              saveLayout();
+              renderAll();
+              return;
+            }
+            if (action === "restore-lines") {
+              delete hiddenEdgeOverrides[wf.id];
+              saveHiddenEdges();
+              renderAll();
+            }
           });
         });
       }
 
-      function renderMeta() {
-        const a = payload.architecture || {};
-        const items = [
-          { k: "runtime", v: a.runtime || "-" },
-          { k: "state model", v: a.stateModel || "-" },
-          { k: "channels", v: (a.channels || []).join(", ") || "-" },
-          { k: "deployment", v: a.deployment || "-" },
-          { k: "api endpoints", v: (a.apiEndpoints || []).join(" | ") || "-" },
-          { k: "updated at", v: payload.updatedAt || "-" }
-        ];
-        meta.innerHTML = items.map(function (it) {
-          return '<div class="meta-item"><div class="meta-k">' + escapeHtml(it.k) + '</div><div class="meta-v">' + escapeHtml(it.v) + '</div></div>';
+      function renderHiddenLineChips(wf) {
+        var hiddenMap = getWorkflowHiddenMap(wf.id);
+        var hiddenEdges = (wf.edges || []).filter(function (edge) {
+          return hiddenMap[edgeKey(edge)];
+        });
+
+        if (!hiddenEdges.length) {
+          hiddenLines.classList.remove("visible");
+          hiddenLines.innerHTML = "";
+          return;
+        }
+
+        hiddenLines.classList.add("visible");
+        hiddenLines.innerHTML = hiddenEdges.map(function (edge) {
+          var key = edgeKey(edge);
+          var label = (edge.label || "linea") + " ↺";
+          return '<button class="chip" data-key="' + escapeHtml(key) + '">' + escapeHtml(label) + '</button>';
         }).join("");
-      }
 
-      function renderFuture() {
-        const list = payload.futureFlows || [];
-        future.innerHTML = list.map(function (f) {
-          return (
-            '<article class="future-item">' +
-              '<div class="future-head"><h3 class="future-title">' + escapeHtml(f.title) + '</h3><span class="future-status">' + escapeHtml(f.status) + '</span></div>' +
-              '<p class="future-detail">' + escapeHtml(f.detail) + '</p>' +
-            '</article>'
-          );
-        }).join("");
-      }
-
-      function buildEdgesMarkup(edges, map) {
-        return edges.map(function (e) {
-          const from = map[e.from];
-          const to = map[e.to];
-          if (!from || !to) return "";
-          const d = edgePath(from, to);
-          const midX = (from.x + to.x + from.w) / 2;
-          const midY = (from.y + to.y + from.h) / 2;
-          return (
-            '<g>' +
-              '<path d="' + d + '" stroke="rgba(255,210,194,0.58)" stroke-width="2" fill="none" marker-end="url(#arrow)"></path>' +
-              '<rect x="' + (midX - 62) + '" y="' + (midY - 12) + '" width="124" height="18" rx="8" fill="rgba(17,24,39,0.95)"></rect>' +
-              '<text x="' + midX + '" y="' + (midY + 1) + '" text-anchor="middle" fill="#ffd8c8" font-size="11" font-family="JetBrains Mono">' + escapeHtml(e.label || "") + '</text>' +
-            '</g>'
-          );
-        }).join("");
-      }
-
-      function bindNodeDragging(wf, nodesMap, edges, width, height, redrawEdges) {
-        const nodeElements = Array.from(canvasHost.querySelectorAll(".node"));
-        let drag = null;
-
-        nodeElements.forEach(function (nodeEl) {
-          nodeEl.addEventListener("pointerdown", function (event) {
-            const nodeId = nodeEl.dataset.id;
-            const node = nodesMap[nodeId];
-            if (!node) return;
-
-            drag = {
-              id: nodeId,
-              pointerId: event.pointerId,
-              startX: event.clientX,
-              startY: event.clientY,
-              originX: node.x,
-              originY: node.y,
-              el: nodeEl
-            };
-
-            nodeEl.classList.add("dragging");
-            try { nodeEl.setPointerCapture(event.pointerId); } catch (_error) {}
-            event.preventDefault();
+        Array.from(hiddenLines.querySelectorAll(".chip")).forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            var key = chip.dataset.key;
+            delete hiddenMap[key];
+            saveHiddenEdges();
+            renderAll();
           });
-
-          nodeEl.addEventListener("pointermove", function (event) {
-            if (!drag || drag.el !== nodeEl) return;
-            const node = nodesMap[drag.id];
-            if (!node) return;
-
-            const dx = event.clientX - drag.startX;
-            const dy = event.clientY - drag.startY;
-            const maxX = Math.max(0, width - node.w);
-            const maxY = Math.max(0, height - node.h);
-
-            node.x = clamp(drag.originX + dx, 0, maxX);
-            node.y = clamp(drag.originY + dy, 0, maxY);
-            nodeEl.style.left = node.x + "px";
-            nodeEl.style.top = node.y + "px";
-
-            const override = getWorkflowOverride(wf.id);
-            override[node.id] = { x: node.x, y: node.y };
-            redrawEdges();
-          });
-
-          function endDrag() {
-            if (!drag || drag.el !== nodeEl) return;
-            try { nodeEl.releasePointerCapture(drag.pointerId); } catch (_error) {}
-            nodeEl.classList.remove("dragging");
-            drag = null;
-            saveLayoutOverrides();
-          }
-
-          nodeEl.addEventListener("pointerup", endDrag);
-          nodeEl.addEventListener("pointercancel", endDrag);
-          nodeEl.addEventListener("lostpointercapture", endDrag);
         });
       }
 
-      function renderWorkflow() {
-        const workflows = payload.workflows || [];
-        const wf = workflows.find(function (x) { return x.id === activeWorkflowId; }) || workflows[0];
+      function renderCanvas() {
+        var wf = getWorkflow();
         if (!wf) {
           canvasHost.innerHTML = "<p>No workflow data.</p>";
           return;
         }
 
         activeWorkflowId = wf.id;
-        workflowName.textContent = wf.name;
-        workflowDesc.textContent = wf.description || "";
+        wfTitle.textContent = wf.name;
+        wfSubtitle.textContent = wf.description || "";
 
-        const nodes = applyWorkflowLayout(wf);
-        const edges = wf.edges || [];
-        const map = toMapById(nodes);
-        const width = (wf.canvas && wf.canvas.width) || 1200;
-        const height = (wf.canvas && wf.canvas.height) || 560;
+        var width = (wf.canvas && wf.canvas.width) || 1200;
+        var height = (wf.canvas && wf.canvas.height) || 560;
+        var hiddenMap = getWorkflowHiddenMap(wf.id);
+        var nodes = applyNodeLayout(wf);
+        var nodeMap = mapById(nodes);
+        var visibleEdges = (wf.edges || []).filter(function (edge) {
+          return !hiddenMap[edgeKey(edge)];
+        });
 
-        const nodeHtml = nodes.map(function (n) {
+        var nodeHtml = nodes.map(function (n) {
           return (
             '<article class="node" data-id="' + escapeHtml(n.id) + '" style="left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;">' +
               '<div class="node-head"><span class="node-kind">' + escapeHtml(n.kind) + '</span><span class="node-kind">id:' + escapeHtml(n.id) + '</span></div>' +
@@ -560,13 +437,9 @@ function renderFlowDashboard() {
           );
         }).join("");
 
-        const paths = edges.map(function (e) {
-          return '<div class="path-row"><span class="path-label">' + escapeHtml(e.label) + '</span><span>' + escapeHtml(e.from + " -> " + e.to) + '</span></div>';
-        }).join("");
-
         canvasHost.innerHTML =
-          '<div class="canvas-shell">' +
-            '<div class="canvas" style="width:' + width + 'px;height:' + height + 'px;">' +
+          '<div class="canvas-viewport" id="canvas-viewport">' +
+            '<div class="scene" id="scene" style="width:' + width + 'px;height:' + height + 'px;">' +
               '<svg class="edges" viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none">' +
                 '<defs>' +
                   '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">' +
@@ -577,36 +450,145 @@ function renderFlowDashboard() {
               '</svg>' +
               nodeHtml +
             '</div>' +
-          '</div>' +
-          '<div class="paths">' + paths + '</div>';
+          '</div>';
 
-        const edgeLayer = canvasHost.querySelector("#edge-layer");
+        var viewport = document.getElementById("canvas-viewport");
+        var scene = document.getElementById("scene");
+        var edgeLayer = document.getElementById("edge-layer");
+
         function redrawEdges() {
-          edgeLayer.innerHTML = buildEdgesMarkup(edges, map);
+          edgeLayer.innerHTML = visibleEdges.map(function (edge) {
+            var from = nodeMap[edge.from];
+            var to = nodeMap[edge.to];
+            if (!from || !to) return "";
+            var d = edgePath(from, to);
+            var midX = (from.x + to.x + from.w) / 2;
+            var midY = (from.y + to.y + from.h) / 2;
+            var key = edgeKey(edge);
+            return (
+              '<g class="edge-item" data-key="' + escapeHtml(key) + '">' +
+                '<path class="edge-path" d="' + d + '" stroke="rgba(255,210,194,0.62)" stroke-width="2" fill="none" marker-end="url(#arrow)"></path>' +
+                '<rect x="' + (midX - 58) + '" y="' + (midY - 11) + '" width="116" height="18" rx="8" fill="rgba(17,24,39,0.95)"></rect>' +
+                '<text x="' + midX + '" y="' + (midY + 1) + '" text-anchor="middle" fill="#ffd8c8" font-size="11" font-family="JetBrains Mono">' + escapeHtml(edge.label || "") + '</text>' +
+              '</g>'
+            );
+          }).join("");
+
+          Array.from(edgeLayer.querySelectorAll(".edge-item")).forEach(function (item) {
+            item.addEventListener("click", function () {
+              var key = item.dataset.key;
+              hiddenMap[key] = true;
+              saveHiddenEdges();
+              renderAll();
+            });
+          });
         }
 
+        function fitScene() {
+          var pad = 18;
+          var vw = Math.max(100, viewport.clientWidth - (pad * 2));
+          var vh = Math.max(100, viewport.clientHeight - (pad * 2));
+          var sx = vw / width;
+          var sy = vh / height;
+          var scale = Math.min(sx, sy);
+          scale = Math.max(0.22, Math.min(scale, 1));
+          currentScale = scale;
+
+          var scaledW = width * scale;
+          var scaledH = height * scale;
+          var tx = Math.round((viewport.clientWidth - scaledW) / 2);
+          var ty = Math.round((viewport.clientHeight - scaledH) / 2);
+          scene.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+        }
+
+        fitSceneFn = fitScene;
+        fitScene();
         redrawEdges();
-        bindNodeDragging(wf, map, edges, width, height, redrawEdges);
+        bindNodeDrag(wf, nodes, nodeMap, visibleEdges, redrawEdges, width, height);
       }
 
-      function render() {
+      function bindNodeDrag(wf, nodes, nodeMap, visibleEdges, redrawEdges, width, height) {
+        var layoutMap = getWorkflowLayoutMap(wf.id);
+        var nodeElements = Array.from(canvasHost.querySelectorAll(".node"));
+        var drag = null;
+
+        nodeElements.forEach(function (el) {
+          el.addEventListener("pointerdown", function (event) {
+            var nodeId = el.dataset.id;
+            var node = nodeMap[nodeId];
+            if (!node) return;
+
+            drag = {
+              id: nodeId,
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: node.x,
+              originY: node.y,
+              el: el
+            };
+
+            el.classList.add("dragging");
+            try { el.setPointerCapture(event.pointerId); } catch (_error) {}
+            event.preventDefault();
+          });
+
+          el.addEventListener("pointermove", function (event) {
+            if (!drag || drag.el !== el) return;
+            var node = nodeMap[drag.id];
+            if (!node) return;
+
+            var dx = (event.clientX - drag.startX) / currentScale;
+            var dy = (event.clientY - drag.startY) / currentScale;
+            var maxX = Math.max(0, width - node.w);
+            var maxY = Math.max(0, height - node.h);
+
+            node.x = clamp(drag.originX + dx, 0, maxX);
+            node.y = clamp(drag.originY + dy, 0, maxY);
+
+            el.style.left = node.x + "px";
+            el.style.top = node.y + "px";
+
+            layoutMap[node.id] = { x: node.x, y: node.y };
+            redrawEdges();
+          });
+
+          function endDrag() {
+            if (!drag || drag.el !== el) return;
+            try { el.releasePointerCapture(drag.pointerId); } catch (_error) {}
+            el.classList.remove("dragging");
+            drag = null;
+            saveLayout();
+          }
+
+          el.addEventListener("pointerup", endDrag);
+          el.addEventListener("pointercancel", endDrag);
+          el.addEventListener("lostpointercapture", endDrag);
+        });
+      }
+
+      function renderAll() {
         if (!payload) return;
         renderToolbar();
-        renderWorkflow();
-        renderMeta();
-        renderFuture();
+        renderHiddenLineChips(getWorkflow());
+        renderCanvas();
       }
+
+      window.addEventListener("resize", function () {
+        fitSceneFn();
+      });
 
       fetch("/api/flows")
         .then(function (res) { return res.json(); })
         .then(function (json) {
           payload = json;
-          layoutOverrides = loadLayoutOverrides();
+          layoutOverrides = safeParse(localStorage.getItem(LAYOUT_KEY), {});
+          hiddenEdgeOverrides = safeParse(localStorage.getItem(HIDDEN_EDGES_KEY), {});
           activeWorkflowId = ((json.workflows || [])[0] || {}).id || null;
-          render();
+          renderAll();
         })
         .catch(function () {
-          canvasHost.innerHTML = '<p style="color:#ffb8b8">No se pudo cargar /api/flows</p>';
+          canvasHost.innerHTML = '<p style="padding:20px;color:#ffb8b8;">No se pudo cargar /api/flows</p>';
         });
     </script>
   </body>
