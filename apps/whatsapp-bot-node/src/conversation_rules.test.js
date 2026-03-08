@@ -232,3 +232,36 @@ test("escala a asesor luego de tres fallbacks consecutivos", async () => {
 
   assert.match(firstText(result.actions), /asesor humano/i);
 });
+
+test("si en paso tipo pedido llega media, la toma como receta y no retrocede", async () => {
+  const contactId = "5491555555555";
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Envios",
+    inboundMessage: buttonMessage("order_mode_delivery", "Envios")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "CABA",
+    inboundMessage: buttonMessage("zone_caba", "CABA")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Av Corrientes 1234, CABA"
+  });
+
+  const result = await nextBotReply({
+    contactId,
+    inboundText: "",
+    inboundMessage: imageMessage()
+  });
+
+  assert.match(firstText(result.actions), /Receta recibida/i);
+});

@@ -208,6 +208,20 @@ function handleOrder(session, profile, input) {
     }
 
     case STEP.ORDER_TYPE: {
+      // Resiliencia: si llega una imagen/documento en este punto, asumimos que
+      // el usuario ya esta en flujo de obra social y quiso enviar receta.
+      if (input.hasMedia) {
+        session.data.orderType = "OBRA SOCIAL/PREPAGA";
+        session.data.recipes = Number(session.data.recipes || 0) + 1;
+        move(session, STEP.RECETA_UPLOAD);
+        return {
+          actions: [
+            { type: "text", text: "Receta recibida. Si tenes mas, segui enviando. Si no, NO TENGO MAS." },
+            buildInteractive("Selecciona una opcion:", [{ id: "receta_no_more", title: "No tengo mas" }])
+          ]
+        };
+      }
+
       const t = parseType(input);
       if (!t) return fallback(session, "Elegi Particular u Obra social.", "Selecciona tipo:", orderTypeButtons());
       session.data.orderType = t;
