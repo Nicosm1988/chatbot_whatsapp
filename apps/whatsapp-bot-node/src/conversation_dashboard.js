@@ -46,6 +46,10 @@ function renderConversationDashboard() {
           <option value="agent_pending">Con asesor</option>
           <option value="closed">Cerrado</option>
         </select>
+        <select class="in" id="q-tag">
+          <option value="">Sin tag</option>
+          <option value="test_run">Solo pruebas</option>
+        </select>
         <button class="btn" id="b-refresh">Actualizar</button>
       </div>
     </section>
@@ -57,7 +61,7 @@ function renderConversationDashboard() {
   <script>
     var currentId=null;
     var listEl=document.getElementById("list"),timelineEl=document.getElementById("timeline"),statusEl=document.getElementById("status");
-    var qContact=document.getElementById("q-contact"),qStatus=document.getElementById("q-status"),bRefresh=document.getElementById("b-refresh");
+    var qContact=document.getElementById("q-contact"),qStatus=document.getElementById("q-status"),qTag=document.getElementById("q-tag"),bRefresh=document.getElementById("b-refresh");
     function esc(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
     function setStatus(t){statusEl.textContent=t}
     function fmt(ts){try{return new Date(ts).toLocaleString("es-AR")}catch(_e){return ts||""}}
@@ -69,6 +73,7 @@ function renderConversationDashboard() {
       var qs=new URLSearchParams({limit:"120"});
       if(qContact.value.trim())qs.set("contactId",qContact.value.trim());
       if(qStatus.value)qs.set("status",qStatus.value);
+      if(qTag.value)qs.set("tag",qTag.value);
       var res=await fetch("/api/conversations?"+qs.toString(),{cache:"no-store"});
       if(!res.ok)throw new Error("status_"+res.status);
       var rows=await res.json();
@@ -114,7 +119,13 @@ function renderConversationDashboard() {
 
     bRefresh.onclick=function(){loadList().catch(function(err){setStatus("Error");console.error(err)})};
     qStatus.onchange=function(){loadList().catch(function(err){setStatus("Error");console.error(err)})};
+    qTag.onchange=function(){loadList().catch(function(err){setStatus("Error");console.error(err)})};
     qContact.onkeydown=function(ev){if(ev.key==="Enter"){loadList().catch(function(err){setStatus("Error");console.error(err)})}};
+
+    var qsInit=new URLSearchParams(window.location.search||"");
+    if(qsInit.get("contactId"))qContact.value=qsInit.get("contactId");
+    if(qsInit.get("status"))qStatus.value=qsInit.get("status");
+    if(qsInit.get("tag"))qTag.value=qsInit.get("tag");
 
     loadList().catch(function(err){setStatus("Error cargando");console.error(err)});
   </script>
@@ -125,4 +136,3 @@ function renderConversationDashboard() {
 module.exports = {
   renderConversationDashboard
 };
-

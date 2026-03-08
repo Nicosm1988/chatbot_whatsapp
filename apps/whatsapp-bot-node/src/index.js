@@ -7,12 +7,14 @@ const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
 const { getWorkflowCatalog, saveWorkflowCatalog, resetWorkflowCatalog } = require("./workflow_store");
 const { renderFlowDashboard } = require("./flow_dashboard");
 const { renderConversationDashboard } = require("./conversation_dashboard");
+const { renderControlCenterDashboard } = require("./control_center_dashboard");
 const {
   recordInboundMessage,
   recordFlowTransition,
   recordOutboundMessage,
   listConversations,
-  getConversationDetail
+  getConversationDetail,
+  getConversationSummary
 } = require("./conversation_audit_store");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
@@ -32,6 +34,10 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/", (_req, res) => {
+  res.status(200).type("html").send(renderControlCenterDashboard());
+});
+
+app.get("/flows", (_req, res) => {
   res.status(200).type("html").send(renderFlowDashboard());
 });
 
@@ -74,12 +80,23 @@ app.get("/api/conversations", async (req, res) => {
     const conversations = await listConversations({
       limit: Number(req.query.limit || 60),
       status: String(req.query.status || ""),
-      contactId: String(req.query.contactId || "")
+      contactId: String(req.query.contactId || ""),
+      tag: String(req.query.tag || "")
     });
     res.status(200).json(conversations);
   } catch (error) {
     console.error("Failed listing conversations", error);
     res.status(500).json({ error: "conversation_list_failed" });
+  }
+});
+
+app.get("/api/conversations/summary", async (_req, res) => {
+  try {
+    const summary = await getConversationSummary();
+    res.status(200).json(summary);
+  } catch (error) {
+    console.error("Failed loading conversation summary", error);
+    res.status(500).json({ error: "conversation_summary_failed" });
   }
 });
 

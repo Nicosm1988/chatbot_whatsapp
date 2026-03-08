@@ -5,6 +5,12 @@ const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
 const AUDIT_PREFIX = String(process.env.AUDIT_KV_PREFIX || "wa:audit:").trim();
 const INDEX_LIMIT = Number(process.env.AUDIT_INDEX_LIMIT || 1000);
 const DETAIL_EVENTS_LIMIT = Number(process.env.AUDIT_DETAIL_EVENTS_LIMIT || 250);
+const TEST_CONTACT_IDS = new Set(
+  String(process.env.TEST_CONTACT_IDS || "")
+    .split(",")
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+);
 
 const memoryKv = new Map();
 
@@ -59,6 +65,24 @@ function truncateText(value, max = 600) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+function normalizeForMatch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isLikelyTestConversation({ contactId, contactName, inboundText }) {
+  const id = String(contactId || "").trim();
+  if (id && TEST_CONTACT_IDS.has(id)) {
+    return true;
+  }
+
+  const combined = `${contactName || ""} ${inboundText || ""}`;
+  const normalized = normalizeForMatch(combined);
+  return normalized.includes("prueba") || normalized.includes("test") || normalized.includes("qa");
 }
 
 function summarizeInboundMessage(message, inboundText) {
@@ -355,6 +379,11 @@ function buildSummaryFromContext(sessionData) {
 async function recordInboundMessage({ contactId, contactName, inboundText, inboundMessage, messageId }) {
   const conversation = await ensureOpenConversation(contactId, contactName);
   const inbound = summarizeInboundMessage(inboundMessage, inboundText);
+  const markAsTest = isLikelyTestConversation({
+    contactId,
+    contactName,
+    inboundText: inbound.text
+  });
 
   const { conv } = await appendEvent(conversation, "inbound_message", {
     messageId: String(messageId || ""),
@@ -362,6 +391,9 @@ async function recordInboundMessage({ contactId, contactName, inboundText, inbou
   });
 
   conv.inboundCount += 1;
+  if (markAsTest) {
+    conv.tags = Array.from(new Set([...(conv.tags || []), "test_run"])).slice(0, 40);
+  }
   await saveConversation(conv);
 
   await upsertContact(contactId, contactName, contact => {
@@ -468,8 +500,9 @@ async function recordOutboundMessage({ conversationId: id, action, status = "sen
   return conv;
 }
 
-async function listConversations({ limit = 60, status = "", contactId = "" } = {}) {
+async function listConversations({ limit = 60, status = "", contactId = "", tag = "" } = {}) {
   const max = Math.max(1, Math.min(Number(limit || 60), 200));
+  const tagFilter = String(tag || "").trim();
   const ids = normalizeArray(
     await kvGetJson(contactId ? keyContactConversations(contactId) : keyAllConversations())
   );
@@ -485,9 +518,47 @@ async function listConversations({ limit = 60, status = "", contactId = "" } = {
     if (status && conv.status !== status) {
       continue;
     }
+    if (tagFilter && !(conv.tags || []).includes(tagFilter)) {
+      continue;
+    }
     output.push(conv);
   }
   return output;
+}
+
+async function getConversationSummary() {
+  const ids = normalizeArray(await kvGetJson(keyAllConversations()));
+  const summary = {
+    total: 0,
+    open: 0,
+    agentPending: 0,
+    closed: 0,
+    testRuns: 0,
+    lastEventAt: null
+  };
+
+  for (const id of ids) {
+    const conv = await getConversation(id);
+    if (!conv) {
+      continue;
+    }
+    summary.total += 1;
+    if (conv.status === "open") {
+      summary.open += 1;
+    } else if (conv.status === "agent_pending") {
+      summary.agentPending += 1;
+    } else if (conv.status === "closed") {
+      summary.closed += 1;
+    }
+    if ((conv.tags || []).includes("test_run")) {
+      summary.testRuns += 1;
+    }
+    if (!summary.lastEventAt || String(conv.lastEventAt || "") > String(summary.lastEventAt || "")) {
+      summary.lastEventAt = conv.lastEventAt || null;
+    }
+  }
+
+  return summary;
 }
 
 async function getConversationDetail(conversationId, limit = DETAIL_EVENTS_LIMIT) {
@@ -518,5 +589,6 @@ module.exports = {
   recordFlowTransition,
   recordOutboundMessage,
   listConversations,
-  getConversationDetail
+  getConversationDetail,
+  getConversationSummary
 };
