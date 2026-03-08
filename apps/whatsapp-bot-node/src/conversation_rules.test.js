@@ -7,10 +7,7 @@ function buttonMessage(id, title) {
   return {
     type: "interactive",
     interactive: {
-      button_reply: {
-        id,
-        title
-      }
+      button_reply: { id, title }
     }
   };
 }
@@ -18,194 +15,220 @@ function buttonMessage(id, title) {
 function imageMessage() {
   return {
     type: "image",
-    image: {
-      id: "mock-image-id"
-    }
+    image: { id: "img-1" }
+  };
+}
+
+function documentMessage() {
+  return {
+    type: "document",
+    document: { id: "doc-1" }
   };
 }
 
 function firstText(actions) {
-  const item = (actions || []).find(action => action.type === "text");
-  return item ? item.text : "";
+  const textAction = (actions || []).find(action => action.type === "text");
+  return textAction ? textAction.text : "";
 }
 
 test.beforeEach(() => {
   _private.resetSessions();
 });
 
-test("flujo completo de stock hasta cierre", async () => {
+test("flujo envio + obra social + pago + encuesta", async () => {
   const contactId = "5491111111111";
 
   let result = await nextBotReply({
     contactId,
-    inboundText: "Consultar Stock",
-    inboundMessage: buttonMessage("btn_stock", "📦 Consultar Stock")
+    contactName: "Carla Test",
+    inboundText: "hola"
   });
-  assert.match(firstText(result.actions), /Consultar Stock/i);
+  assert.match(firstText(result.actions), /bienvenida|sistema de pedidos/i);
 
-  result = await nextBotReply({ contactId, inboundText: "Ibuprofeno" });
-  assert.match(firstText(result.actions), /presentacion|dosis/i);
+  result = await nextBotReply({
+    contactId,
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+  assert.match(firstText(result.actions), /modalidad|cancelar/i);
 
-  result = await nextBotReply({ contactId, inboundText: "400 mg x 20" });
-  assert.match(firstText(result.actions), /cantidad|cuantas/i);
+  result = await nextBotReply({
+    contactId,
+    inboundText: "Envios",
+    inboundMessage: buttonMessage("order_mode_delivery", "Envios")
+  });
+  assert.match(firstText(result.actions), /zona de envio|selecciona la zona/i);
 
-  result = await nextBotReply({ contactId, inboundText: "2" });
+  result = await nextBotReply({
+    contactId,
+    inboundText: "Zona Norte",
+    inboundMessage: buttonMessage("zone_norte", "Zona Norte")
+  });
+  assert.match(firstText(result.actions), /direccion/i);
+
+  result = await nextBotReply({
+    contactId,
+    inboundText: "Jose Ingenieros 5334, Carapachay"
+  });
   assert.equal(result.actions[0].type, "interactive");
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Retiro sucursal",
-    inboundMessage: buttonMessage("stock_mode_pickup", "Retiro sucursal")
+    inboundText: "Obra social",
+    inboundMessage: buttonMessage("type_obra_social", "Obra social")
   });
-  assert.equal(result.actions[0].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Centro",
-    inboundMessage: buttonMessage("stock_branch_centro", "Centro")
-  });
-  assert.match(firstText(result.actions), /horario/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Hoy 18 a 20" });
-  assert.equal(result.actions[1].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Confirmar",
-    inboundMessage: buttonMessage("stock_confirm_yes", "Confirmar")
-  });
-  assert.match(firstText(result.actions), /Solicitud de stock registrada/i);
-});
-
-test("flujo completo de receta hasta cierre", async () => {
-  const contactId = "5491122222222";
-
-  let result = await nextBotReply({
-    contactId,
-    inboundText: "Enviar Receta",
-    inboundMessage: buttonMessage("btn_receta", "📝 Enviar Receta")
-  });
-  assert.match(firstText(result.actions), /Enviar Receta/i);
+  assert.match(firstText(result.actions), /recetas/i);
 
   result = await nextBotReply({
     contactId,
     inboundText: "",
     inboundMessage: imageMessage()
   });
-  assert.match(firstText(result.actions), /nombre y apellido/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Juan Perez" });
-  assert.match(firstText(result.actions), /DNI/i);
-
-  result = await nextBotReply({ contactId, inboundText: "30123456" });
-  assert.match(firstText(result.actions), /obra social|cobertura|particular/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Particular" });
-  assert.equal(result.actions[0].type, "interactive");
+  assert.match(firstText(result.actions), /Receta recibida/i);
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Retiro sucursal",
-    inboundMessage: buttonMessage("receta_mode_pickup", "Retiro sucursal")
+    inboundText: "No tengo mas",
+    inboundMessage: buttonMessage("receta_no_more", "No tengo mas")
+  });
+  assert.match(firstText(result.actions), /credencial/i);
+
+  result = await nextBotReply({
+    contactId,
+    inboundText: "",
+    inboundMessage: imageMessage()
   });
   assert.equal(result.actions[0].type, "interactive");
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Centro",
-    inboundMessage: buttonMessage("receta_branch_centro", "Centro")
+    inboundText: "Pedido completo",
+    inboundMessage: buttonMessage("items_done", "Pedido completo")
   });
-  assert.match(firstText(result.actions), /horario/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Mañana por la mañana" });
-  assert.equal(result.actions[0].type, "interactive");
+  assert.match(firstText(result.actions), /un momento|continuamos/i);
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Usar este numero",
-    inboundMessage: buttonMessage("receta_contact_whatsapp", "Usar este numero")
+    inboundText: "si"
   });
-  assert.equal(result.actions[1].type, "interactive");
+  assert.match(firstText(result.actions), /Resumen preliminar/i);
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Confirmar",
-    inboundMessage: buttonMessage("receta_confirm_yes", "Confirmar")
+    inboundText: "no"
   });
-  assert.match(firstText(result.actions), /Solicitud de receta registrada/i);
+  assert.match(firstText(result.actions), /Link de pago/i);
+
+  result = await nextBotReply({
+    contactId,
+    inboundText: "",
+    inboundMessage: documentMessage()
+  });
+  assert.match(firstText(result.actions), /pedido saldra|PEDIDO EN PREPARACION/i);
+
+  result = await nextBotReply({
+    contactId,
+    inboundText: "9"
+  });
+  assert.match(firstText(result.actions), /puntuacion 9\/10/i);
 });
 
-test("flujo completo de turno hasta cierre", async () => {
-  const contactId = "5491133333333";
+test("flujo particular permite agregar producto y volver a decision", async () => {
+  const contactId = "5491222222222";
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Retiro tienda",
+    inboundMessage: buttonMessage("order_mode_pickup", "Retiro tienda")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Martinez",
+    inboundMessage: buttonMessage("pickup_martinez", "Martinez")
+  });
 
   let result = await nextBotReply({
     contactId,
-    inboundText: "Sacar un Turno",
-    inboundMessage: buttonMessage("btn_turnos", "📅 Sacar un Turno")
+    inboundText: "Particular",
+    inboundMessage: buttonMessage("type_particular", "Particular")
   });
-  assert.match(firstText(result.actions), /Sacar un Turno/i);
+  assert.match(firstText(result.actions), /primer producto/i);
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Vacunacion",
-    inboundMessage: buttonMessage("turno_service_vacuna", "Vacunacion")
+    inboundText: "Paracetamol 500 mg x 16"
   });
-  assert.equal(result.actions[0].type, "interactive");
+  assert.match(firstText(result.actions), /Producto agregado/i);
 
   result = await nextBotReply({
     contactId,
-    inboundText: "Norte 24hs",
-    inboundMessage: buttonMessage("turno_branch_norte", "Norte 24hs")
+    inboundText: "Agregar producto",
+    inboundMessage: buttonMessage("items_add", "Agregar producto")
   });
-  assert.equal(result.actions[0].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Hoy",
-    inboundMessage: buttonMessage("turno_date_hoy", "Hoy")
-  });
-  assert.equal(result.actions[0].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Tarde",
-    inboundMessage: buttonMessage("turno_slot_tarde", "Tarde")
-  });
-  assert.match(firstText(result.actions), /nombre y apellido/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Maria Gomez" });
-  assert.match(firstText(result.actions), /vacuna|orden medica|consulta/i);
-
-  result = await nextBotReply({ contactId, inboundText: "Antigripal, sin orden medica" });
-  assert.equal(result.actions[0].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Usar este numero",
-    inboundMessage: buttonMessage("turno_contact_whatsapp", "Usar este numero")
-  });
-  assert.equal(result.actions[1].type, "interactive");
-
-  result = await nextBotReply({
-    contactId,
-    inboundText: "Confirmar",
-    inboundMessage: buttonMessage("turno_confirm_yes", "Confirmar")
-  });
-  assert.match(firstText(result.actions), /Turno pre-reservado/i);
+  assert.match(firstText(result.actions), /siguiente producto/i);
 });
 
-test("escala a asesor humano despues de tres fallbacks consecutivos", async () => {
-  const contactId = "5491144444444";
+test("cliente recurrente recibe opcion continuar o nuevo pedido", async () => {
+  const contactId = "5491333333333";
 
+  await nextBotReply({ contactId, contactName: "Carla Repeat", inboundText: "hola" });
   await nextBotReply({
     contactId,
-    inboundText: "Consultar Stock",
-    inboundMessage: buttonMessage("btn_stock", "📦 Consultar Stock")
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "Envios",
+    inboundMessage: buttonMessage("order_mode_delivery", "Envios")
+  });
+  await nextBotReply({
+    contactId,
+    inboundText: "CABA",
+    inboundMessage: buttonMessage("zone_caba", "CABA")
+  });
+  await nextBotReply({ contactId, inboundText: "Avenida Siempreviva 123, CABA" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Particular",
+    inboundMessage: buttonMessage("type_particular", "Particular")
+  });
+  await nextBotReply({ contactId, inboundText: "Ibuprofeno" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Pedido completo",
+    inboundMessage: buttonMessage("items_done", "Pedido completo")
+  });
+  await nextBotReply({ contactId, inboundText: "menu" });
+
+  const result = await nextBotReply({
+    contactId,
+    inboundText: "hola"
   });
 
-  await nextBotReply({ contactId, inboundText: "" });
-  await nextBotReply({ contactId, inboundText: "" });
-  const result = await nextBotReply({ contactId, inboundText: "" });
+  assert.match(firstText(result.actions), /ultimo pedido|Continuamos/i);
+  assert.equal(result.actions[1].type, "interactive");
+});
+
+test("escala a asesor luego de tres fallbacks consecutivos", async () => {
+  const contactId = "5491444444444";
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Hacer pedido",
+    inboundMessage: buttonMessage("menu_make_order", "Hacer pedido")
+  });
+
+  await nextBotReply({ contactId, inboundText: "???" });
+  await nextBotReply({ contactId, inboundText: "???" });
+  const result = await nextBotReply({ contactId, inboundText: "???" });
 
   assert.match(firstText(result.actions), /asesor humano/i);
 });

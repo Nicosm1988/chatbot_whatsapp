@@ -24,6 +24,11 @@ const whatsappMockMode = readBoolean(process.env.WHATSAPP_MOCK_MODE, false);
 const config = {
   port: Number((process.env.PORT || "3000").trim()),
   metaApiVersion: (process.env.META_API_VERSION || "v22.0").trim(),
+  businessDisplayName: (process.env.BUSINESS_DISPLAY_NAME || "Farmacia Delko").trim(),
+  catalogWebUrl: (process.env.CATALOG_WEB_URL || "https://www.selmadigital.com.ar").trim(),
+  mercadoLibreUrl: (process.env.MERCADOLIBRE_URL || "https://www.mercadolibre.com.ar").trim(),
+  shippingPromoImageUrl: (process.env.SHIPPING_PROMO_IMAGE_URL || "").trim(),
+  paymentLinkUrl: (process.env.PAYMENT_LINK_URL || "https://mpago.la/demo").trim(),
   whatsappAccessToken: whatsappMockMode
     ? (process.env.WHATSAPP_ACCESS_TOKEN || "mock-token").trim()
     : requireEnv("WHATSAPP_ACCESS_TOKEN"),
@@ -34,7 +39,7 @@ const config = {
   whatsappAppSecret: (process.env.WHATSAPP_APP_SECRET || "").trim(),
   whatsappMockMode,
   agenticMode: readBoolean(process.env.AGENTIC_MODE, false),
-  openaiApiKey: (process.env.OPENAI_API_KEY || "").trim(),
+  openaiApiKey: (process.env.OPENAI_API_KEY || "").trim()
 };
 
 module.exports = { config };

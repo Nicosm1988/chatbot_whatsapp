@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "NODE_ENV=production node src/index.js",
-    "test": "node --test src/*.test.js",
+    "test": "node --test --test-isolation=none src/*.test.js",
     "deploy:prod": "bash scripts/deploy_and_sync_webhook.sh"
   },
   "dependencies": {

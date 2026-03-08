@@ -4,6 +4,8 @@ const express = require("express");
 const { config } = require("./config");
 const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
+const { getFlowCatalog } = require("./flow_catalog");
+const { renderFlowDashboard } = require("./flow_dashboard");
 const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
 
 const app = express();
@@ -22,113 +24,11 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/", (_req, res) => {
-  const now = new Date().toISOString();
-  res
-    .status(200)
-    .type("html")
-    .send(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Farmacia Modelo - WhatsApp Webhook</title>
-    <style>
-      :root {
-        --bg: #f4f8ff;
-        --card: #ffffff;
-        --ink: #0f172a;
-        --muted: #475569;
-        --accent: #0b69ff;
-        --ok: #0f9d58;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        background: radial-gradient(circle at 15% 20%, #dbeafe 0, transparent 30%),
-                    radial-gradient(circle at 90% 10%, #cffafe 0, transparent 35%),
-                    var(--bg);
-        color: var(--ink);
-        display: grid;
-        place-items: center;
-        padding: 24px;
-      }
-      .card {
-        width: 100%;
-        max-width: 760px;
-        background: var(--card);
-        border: 1px solid #d9e4ff;
-        border-radius: 14px;
-        padding: 24px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-      }
-      h1 {
-        margin: 0 0 10px;
-        font-size: 1.3rem;
-      }
-      p {
-        margin: 0 0 12px;
-        color: var(--muted);
-        line-height: 1.45;
-      }
-      .badge {
-        display: inline-block;
-        background: #e9fbef;
-        color: #0a7d45;
-        border: 1px solid #b8efcf;
-        border-radius: 999px;
-        padding: 4px 10px;
-        font-size: 0.8rem;
-        margin-bottom: 12px;
-      }
-      .grid {
-        display: grid;
-        gap: 10px;
-        margin: 16px 0;
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .k {
-        font-weight: 700;
-      }
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        padding: 2px 6px;
-      }
-      a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      a:hover { text-decoration: underline; }
-      .foot {
-        margin-top: 14px;
-        font-size: 0.85rem;
-        color: #64748b;
-      }
-    </style>
-  </head>
-  <body>
-    <main class="card">
-      <div class="badge">Webhook Online</div>
-      <h1>Farmacia Modelo - WhatsApp API</h1>
-      <p>This is the production webhook service for WhatsApp Cloud API.</p>
-      <div class="grid">
-        <div class="row"><span class="k">Health:</span> <code>/health</code></div>
-        <div class="row"><span class="k">Webhook verify:</span> <code>GET /webhook</code></div>
-        <div class="row"><span class="k">Webhook events:</span> <code>POST /webhook</code></div>
-      </div>
-      <p>For Meta setup, callback URL is <code>/webhook</code> and verify token must match server configuration.</p>
-      <p class="foot">Last server render: ${now}</p>
-    </main>
-  </body>
-</html>`);
+  res.status(200).type("html").send(renderFlowDashboard());
+});
+
+app.get("/api/flows", (_req, res) => {
+  res.status(200).json(getFlowCatalog());
 });
 
 app.get("/webhook", (req, res) => {
@@ -193,6 +93,16 @@ async function processIncomingEvent(payload) {
 
   for (const entry of entries) {
     for (const change of entry.changes || []) {
+      const contacts = change.value?.contacts || [];
+      const contactNamesByWaId = new Map();
+      for (const contact of contacts) {
+        const waId = contact?.wa_id;
+        if (!waId) {
+          continue;
+        }
+        contactNamesByWaId.set(waId, contact?.profile?.name || "");
+      }
+
       const messages = change.value?.messages || [];
       for (const message of messages) {
         const messageId = message.id;
@@ -209,12 +119,14 @@ async function processIncomingEvent(payload) {
         processedMessageIds.add(messageId);
         trimProcessedIds(processedMessageIds, 10000);
 
-        let mappedFrom = from;
+        const mappedFrom = from;
+        const contactName = contactNamesByWaId.get(from) || "";
 
         const inboundText = extractInboundText(message);
         const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
         const flowResult = await replyHandler({
           contactId: mappedFrom,
+          contactName,
           inboundText,
           inboundMessage: message
         });
