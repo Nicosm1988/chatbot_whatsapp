@@ -187,6 +187,7 @@ async function getChatbotRuntimeConfig() {
   const catalog = await getWorkflowCatalog();
   const workflow = (catalog.workflows || []).find(wf => wf.id === "wf_order");
   return {
+    workflow: workflow ? clone(workflow) : { id: "wf_order", nodes: [], edges: [] },
     nodeMessages: toNodeMessageMap(workflow),
     routes: toRouteMap(workflow)
   };

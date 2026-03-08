@@ -1,5 +1,6 @@
 const { config } = require("./config");
 const { getChatbotRuntimeConfig } = require("./workflow_store");
+const { createFlowEngine } = require("./flow_engine");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_SESSIONS = 20000;
@@ -32,8 +33,6 @@ const STEP = {
   PAYMENT_PROOF: "payment_proof",
   SURVEY: "survey"
 };
-const STEP_VALUES = new Set(Object.values(STEP));
-
 const sessions = new Map();
 const profiles = new Map();
 
@@ -45,6 +44,7 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   await hydrateState(contactId);
   cleanupExpiredSessions();
   const runtime = await getChatbotRuntimeConfig();
+  const flowEngine = createFlowEngine(runtime.workflow);
   const profile = getProfile(contactId, contactName);
   const session = getSession(contactId);
   const input = buildInput(inboundText, inboundMessage);
@@ -64,11 +64,11 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   } else if (session.state === S.AGENT) {
     result = { actions: [{ type: "text", text: "Tu caso sigue con asesor humano. Escribi MENU para volver al bot." }] };
   } else if (session.state === S.IDLE && recoverFromInput(session, input)) {
-    result = handleOrder(session, profile, input, runtime);
+    result = handleOrder(session, profile, input, runtime, flowEngine);
   } else if (session.state === S.IDLE) {
-    result = startFlow(session, profile, input, runtime);
+    result = startFlow(session, profile, input, runtime, flowEngine);
   } else {
-    result = handleOrder(session, profile, input, runtime);
+    result = handleOrder(session, profile, input, runtime, flowEngine);
   }
 
   touchSession(contactId, session);
@@ -76,26 +76,62 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   return result;
 }
 
-function startFlow(session, profile, input, runtime) {
+function startFlow(session, profile, input, runtime, flowEngine) {
   session.state = S.ORDER;
   if (!input.normalized || isGreeting(input.normalized)) {
     if (profile.lastOrder) {
-      move(session, STEP.RETURNING);
+      move(session, resolveStep(flowEngine, STEP.RETURNING, STEP.MENU));
       return { actions: returningPrompt(profile, runtime) };
     }
   }
-  move(session, STEP.MENU);
+  move(session, resolveStep(flowEngine, STEP.MENU, STEP.MENU));
   return { actions: mainMenu(profile, runtime) };
 }
 
-function handleOrder(session, profile, input, runtime) {
-  switch (session.step) {
+function handleOrder(session, profile, input, runtime, flowEngine) {
+  const handlers = buildOrderHandlers(session, profile, input, runtime, flowEngine);
+  const currentStep = resolveStep(flowEngine, session.step || STEP.MENU, STEP.MENU);
+  if (session.step !== currentStep) {
+    move(session, currentStep);
+  }
+  const result = flowEngine.executeNode({
+    nodeId: currentStep,
+    handlers,
+    context: { session, profile, input, runtime }
+  });
+  return { actions: result.actions || [] };
+}
+
+function buildOrderHandlers(session, profile, input, runtime, flowEngine) {
+  return {
+    [STEP.RETURNING]: () => executeOrderStep(STEP.RETURNING, session, profile, input, runtime, flowEngine),
+    [STEP.MENU]: () => executeOrderStep(STEP.MENU, session, profile, input, runtime, flowEngine),
+    [STEP.MODE]: () => executeOrderStep(STEP.MODE, session, profile, input, runtime, flowEngine),
+    [STEP.ZONE]: () => executeOrderStep(STEP.ZONE, session, profile, input, runtime, flowEngine),
+    [STEP.ADDRESS_DECISION]: () => executeOrderStep(STEP.ADDRESS_DECISION, session, profile, input, runtime, flowEngine),
+    [STEP.ADDRESS_INPUT]: () => executeOrderStep(STEP.ADDRESS_INPUT, session, profile, input, runtime, flowEngine),
+    [STEP.PICKUP_BRANCH]: () => executeOrderStep(STEP.PICKUP_BRANCH, session, profile, input, runtime, flowEngine),
+    [STEP.ORDER_TYPE]: () => executeOrderStep(STEP.ORDER_TYPE, session, profile, input, runtime, flowEngine),
+    [STEP.RECETA_UPLOAD]: () => executeOrderStep(STEP.RECETA_UPLOAD, session, profile, input, runtime, flowEngine),
+    [STEP.CREDENTIAL_UPLOAD]: () => executeOrderStep(STEP.CREDENTIAL_UPLOAD, session, profile, input, runtime, flowEngine),
+    [STEP.ITEM_INPUT]: () => executeOrderStep(STEP.ITEM_INPUT, session, profile, input, runtime, flowEngine),
+    [STEP.ITEM_DECISION]: () => executeOrderStep(STEP.ITEM_DECISION, session, profile, input, runtime, flowEngine),
+    [STEP.AGENT_CONTINUE]: () => executeOrderStep(STEP.AGENT_CONTINUE, session, profile, input, runtime, flowEngine),
+    [STEP.AGENT_ADD_MORE]: () => executeOrderStep(STEP.AGENT_ADD_MORE, session, profile, input, runtime, flowEngine),
+    [STEP.PAYMENT_PROOF]: () => executeOrderStep(STEP.PAYMENT_PROOF, session, profile, input, runtime, flowEngine),
+    [STEP.SURVEY]: () => executeOrderStep(STEP.SURVEY, session, profile, input, runtime, flowEngine),
+    __default: () => ({ actions: mainMenu(profile, runtime) })
+  };
+}
+
+function executeOrderStep(step, session, profile, input, runtime, flowEngine) {
+  switch (step) {
     case STEP.RETURNING: {
       const c = parseReturning(input);
       if (!c) return fallback(session, "Elegi Continuar o Nuevo pedido.", "Selecciona una opcion:", returningButtons(runtime));
       if (c === "continue") {
         hydrateFromLastOrder(session, profile.lastOrder);
-        moveByRoute(session, runtime, "return_continue", STEP.ORDER_TYPE);
+        moveByRoute(session, flowEngine, STEP.RETURNING, "return_continue", STEP.ORDER_TYPE);
         return {
           actions: [
             { type: "text", text: continueSummary(profile.lastOrder) },
@@ -103,7 +139,7 @@ function handleOrder(session, profile, input, runtime) {
           ]
         };
       }
-      moveByRoute(session, runtime, "return_new", STEP.MENU);
+      moveByRoute(session, flowEngine, STEP.RETURNING, "return_new", STEP.MENU);
       session.data = {};
       return { actions: [{ type: "text", text: "Perfecto, hacemos un pedido nuevo." }, ...mainMenu(profile, runtime, true)] };
     }
@@ -127,7 +163,7 @@ function handleOrder(session, profile, input, runtime) {
         session.step = null;
         return { actions: [{ type: "text", text: "Te derivo al sector de consultas y reclamos." }] };
       }
-      moveByRoute(session, runtime, "menu_make_order", STEP.MODE);
+      moveByRoute(session, flowEngine, STEP.MENU, "menu_make_order", STEP.MODE);
       return {
         actions: [
           { type: "text", text: nodeText(runtime, "mode", "Selecciona modalidad o escribi CANCELAR.") },
@@ -141,7 +177,7 @@ function handleOrder(session, profile, input, runtime) {
       if (!mode) return fallback(session, "Elegi Envios o Retiro tienda.", nodeText(runtime, "mode", "Modalidad:"), modeButtons(runtime));
       session.data.mode = mode;
       if (mode === "ENVIO") {
-        moveByRoute(session, runtime, "mode_delivery", STEP.ZONE);
+        moveByRoute(session, flowEngine, STEP.MODE, "mode_delivery", STEP.ZONE);
         const actions = [];
         if (config.shippingPromoImageUrl) {
           actions.push({ type: "image", url: config.shippingPromoImageUrl, caption: "Promociones de envio" });
@@ -150,7 +186,7 @@ function handleOrder(session, profile, input, runtime) {
         actions.push(zoneButtons(runtime));
         return { actions };
       }
-      moveByRoute(session, runtime, "mode_pickup", STEP.PICKUP_BRANCH);
+      moveByRoute(session, flowEngine, STEP.MODE, "mode_pickup", STEP.PICKUP_BRANCH);
       return {
         actions: [
           buildInteractive(nodeText(runtime, "pickup_branch", "Selecciona sucursal:"), [
@@ -167,7 +203,7 @@ function handleOrder(session, profile, input, runtime) {
       if (!zone) return fallback(session, "Elegi Zona Norte, CABA o Pilar.", nodeText(runtime, "zone", "Zona:"), zoneButtons(runtime));
       session.data.zone = zone;
       if (profile.lastOrder?.address) {
-        moveByRoute(session, runtime, "zone_saved_address", STEP.ADDRESS_DECISION);
+        moveByRoute(session, flowEngine, STEP.ZONE, "zone_saved_address", STEP.ADDRESS_DECISION);
         return {
           actions: [
             buildInteractive(renderNodeTemplate(nodeText(runtime, "address_decision", "Enviar a {address}?"), { address: profile.lastOrder.address }), [
@@ -177,7 +213,7 @@ function handleOrder(session, profile, input, runtime) {
           ]
         };
       }
-      moveByRoute(session, runtime, "zone_need_address", STEP.ADDRESS_INPUT);
+      moveByRoute(session, flowEngine, STEP.ZONE, "zone_need_address", STEP.ADDRESS_INPUT);
       return { actions: [{ type: "text", text: nodeText(runtime, "address_input", "Envia direccion completa para el envio.") }] };
     }
 
@@ -186,24 +222,24 @@ function handleOrder(session, profile, input, runtime) {
       if (!c) return fallback(session, "Elegi direccion guardada u otra.", nodeText(runtime, "address_decision", "Selecciona una opcion:"), addressButtons(runtime));
       if (c === "saved") {
         session.data.address = profile.lastOrder.address;
-        moveByRoute(session, runtime, "address_use_saved", STEP.ORDER_TYPE);
+        moveByRoute(session, flowEngine, STEP.ADDRESS_DECISION, "address_use_saved", STEP.ORDER_TYPE);
         return { actions: [orderTypeButtons(runtime)] };
       }
-      moveByRoute(session, runtime, "address_other", STEP.ADDRESS_INPUT);
+      moveByRoute(session, flowEngine, STEP.ADDRESS_DECISION, "address_other", STEP.ADDRESS_INPUT);
       return { actions: [{ type: "text", text: nodeText(runtime, "address_input", "Envia la nueva direccion completa.") }] };
     }
 
     case STEP.ADDRESS_INPUT:
       if (!input.text || input.text.length < 8) return fallback(session, "Necesito una direccion completa.");
       session.data.address = trim(input.text, 120);
-      moveByRoute(session, runtime, "address_done", STEP.ORDER_TYPE);
+      moveByRoute(session, flowEngine, STEP.ADDRESS_INPUT, "address_done", STEP.ORDER_TYPE);
       return { actions: [orderTypeButtons(runtime)] };
 
     case STEP.PICKUP_BRANCH: {
       const b = parseBranch(input);
       if (!b) return fallback(session, "Elegi San Isidro, Martinez o CABA.");
       session.data.branch = b;
-      moveByRoute(session, runtime, "pickup_done", STEP.ORDER_TYPE);
+      moveByRoute(session, flowEngine, STEP.PICKUP_BRANCH, "pickup_done", STEP.ORDER_TYPE);
       return { actions: [orderTypeButtons(runtime)] };
     }
 
@@ -213,7 +249,7 @@ function handleOrder(session, profile, input, runtime) {
       if (input.hasMedia) {
         session.data.orderType = "OBRA SOCIAL/PREPAGA";
         session.data.recipes = Number(session.data.recipes || 0) + 1;
-        moveByRoute(session, runtime, "order_type_os", STEP.RECETA_UPLOAD);
+        moveByRoute(session, flowEngine, STEP.ORDER_TYPE, "order_type_os", STEP.RECETA_UPLOAD);
         return {
           actions: [
             { type: "text", text: "Receta recibida. Si tenes mas, segui enviando. Si no, NO TENGO MAS." },
@@ -227,7 +263,7 @@ function handleOrder(session, profile, input, runtime) {
       session.data.orderType = t;
       if (t === "OBRA SOCIAL/PREPAGA") {
         session.data.recipes = 0;
-        moveByRoute(session, runtime, "order_type_os", STEP.RECETA_UPLOAD);
+        moveByRoute(session, flowEngine, STEP.ORDER_TYPE, "order_type_os", STEP.RECETA_UPLOAD);
         return {
           actions: [
             { type: "text", text: nodeText(runtime, "receta_upload", "Envia fotos/links/PDF de recetas. Al terminar toca NO TENGO MAS.") },
@@ -236,7 +272,7 @@ function handleOrder(session, profile, input, runtime) {
         };
       }
       session.data.items = 0;
-      moveByRoute(session, runtime, "order_type_particular", STEP.ITEM_INPUT);
+      moveByRoute(session, flowEngine, STEP.ORDER_TYPE, "order_type_particular", STEP.ITEM_INPUT);
       return { actions: [{ type: "text", text: nodeText(runtime, "item_input", "Envia el primer producto (texto, foto o PDF).") }] };
     }
 
@@ -261,20 +297,20 @@ function handleOrder(session, profile, input, runtime) {
           return fallback(session, "Primero envia al menos una receta.");
         }
 
-        moveByRoute(session, runtime, "receta_done", STEP.CREDENTIAL_UPLOAD);
+        moveByRoute(session, flowEngine, STEP.RECETA_UPLOAD, "receta_done", STEP.CREDENTIAL_UPLOAD);
         return { actions: [{ type: "text", text: nodeText(runtime, "credential_upload", "Ahora envia la foto del frente de la credencial.") }] };
       }
       return fallback(session, "Envia receta o toca NO TENGO MAS.");
 
     case STEP.CREDENTIAL_UPLOAD:
       if (!input.hasMedia) return fallback(session, "Necesito la foto/PDF de la credencial.");
-      moveByRoute(session, runtime, "credential_done", STEP.ITEM_DECISION);
+      moveByRoute(session, flowEngine, STEP.CREDENTIAL_UPLOAD, "credential_done", STEP.ITEM_DECISION);
       return { actions: [itemDecisionButtons(runtime)] };
 
     case STEP.ITEM_INPUT:
       if (!input.hasMedia && !input.text) return fallback(session, "Envia producto por texto, foto o PDF.");
       session.data.items = Number(session.data.items || 0) + 1;
-      moveByRoute(session, runtime, "item_input_done", STEP.ITEM_DECISION);
+      moveByRoute(session, flowEngine, STEP.ITEM_INPUT, "item_input_done", STEP.ITEM_DECISION);
       return { actions: [{ type: "text", text: "Producto agregado." }, itemDecisionButtons(runtime)] };
 
     case STEP.ITEM_DECISION: {
@@ -285,11 +321,11 @@ function handleOrder(session, profile, input, runtime) {
         return { actions: [{ type: "text", text: "Pedido cancelado." }, ...mainMenu(profile, runtime)] };
       }
       if (d === "add") {
-        moveByRoute(session, runtime, "item_decision_add", STEP.ITEM_INPUT);
+        moveByRoute(session, flowEngine, STEP.ITEM_DECISION, "item_decision_add", STEP.ITEM_INPUT);
         return { actions: [{ type: "text", text: "Perfecto, envia el siguiente producto." }] };
       }
       saveLastOrder(profile, session.data);
-      moveByRoute(session, runtime, "item_decision_done", STEP.AGENT_CONTINUE);
+      moveByRoute(session, flowEngine, STEP.ITEM_DECISION, "item_decision_done", STEP.AGENT_CONTINUE);
       return {
         actions: [
           { type: "text", text: "Gracias, un momento por favor. Enseguida continuamos con tu pedido." },
@@ -302,7 +338,7 @@ function handleOrder(session, profile, input, runtime) {
       const yn = parseYesNo(input);
       if (!yn) return fallback(session, "Responde SI o NO.");
       if (yn === "no") {
-        moveByRoute(session, runtime, "agent_continue_no", STEP.MENU);
+        moveByRoute(session, flowEngine, STEP.AGENT_CONTINUE, "agent_continue_no", STEP.MENU);
         if (session.step === STEP.MENU) {
           session.state = S.ORDER;
           session.data = {};
@@ -311,7 +347,7 @@ function handleOrder(session, profile, input, runtime) {
         resetSession(session);
         return { actions: [{ type: "text", text: "Dejamos el pedido en pausa. Escribi MENU para retomarlo." }] };
       }
-      moveByRoute(session, runtime, "agent_continue_yes", STEP.AGENT_ADD_MORE);
+      moveByRoute(session, flowEngine, STEP.AGENT_CONTINUE, "agent_continue_yes", STEP.AGENT_ADD_MORE);
       return { actions: [{ type: "text", text: quoteSummary(session.data) }, { type: "text", text: nodeText(runtime, "agent_add_more", "Queres agregar algo mas?") }] };
     }
 
@@ -319,10 +355,10 @@ function handleOrder(session, profile, input, runtime) {
       const yn = parseYesNo(input);
       if (!yn) return fallback(session, "Responde SI para agregar o NO para pagar.");
       if (yn === "yes") {
-        moveByRoute(session, runtime, "agent_add_more_yes", STEP.ITEM_INPUT);
+        moveByRoute(session, flowEngine, STEP.AGENT_ADD_MORE, "agent_add_more_yes", STEP.ITEM_INPUT);
         return { actions: [{ type: "text", text: "Envia el producto adicional." }] };
       }
-      moveByRoute(session, runtime, "agent_add_more_no", STEP.PAYMENT_PROOF);
+      moveByRoute(session, flowEngine, STEP.AGENT_ADD_MORE, "agent_add_more_no", STEP.PAYMENT_PROOF);
       return {
         actions: [
           { type: "text", text: `Link de pago: ${config.paymentLinkUrl}` },
@@ -333,7 +369,7 @@ function handleOrder(session, profile, input, runtime) {
 
     case STEP.PAYMENT_PROOF:
       if (!input.hasMedia) return fallback(session, "Adjunta imagen o PDF del comprobante.");
-      moveByRoute(session, runtime, "payment_done", STEP.SURVEY);
+      moveByRoute(session, flowEngine, STEP.PAYMENT_PROOF, "payment_done", STEP.SURVEY);
       return {
         actions: [
           { type: "text", text: "Gracias, tu pedido saldra a partir de las 11 hs. Entrega estimada: 12 a 15 hs." },
@@ -345,7 +381,7 @@ function handleOrder(session, profile, input, runtime) {
     case STEP.SURVEY: {
       const r = parseRating(input.normalized);
       if (!r) return fallback(session, "Necesito un numero del 1 al 10.");
-      const surveyNext = routeStep(runtime, "survey_done", STEP.MENU);
+      const surveyNext = flowEngine.resolveRoute(STEP.SURVEY, "survey_done", STEP.MENU);
       resetSession(session);
       if (surveyNext === STEP.MENU) {
         return { actions: [{ type: "text", text: `Gracias por tu puntuacion ${r}/10.` }, ...mainMenu(profile, runtime, true)] };
@@ -354,7 +390,7 @@ function handleOrder(session, profile, input, runtime) {
     }
 
     default:
-      move(session, STEP.MENU);
+      move(session, resolveStep(flowEngine, STEP.MENU, STEP.MENU));
       return { actions: mainMenu(profile, runtime) };
   }
 }
@@ -664,16 +700,13 @@ function nodeText(runtime, nodeId, fallbackText) {
   return message || fallbackText;
 }
 
-function routeStep(runtime, routeKey, fallbackStep) {
-  const next = String(runtime?.routes?.[routeKey] || "").trim();
-  if (STEP_VALUES.has(next)) {
-    return next;
-  }
-  return fallbackStep;
+function resolveStep(flowEngine, preferredStep, fallbackStep) {
+  return flowEngine.resolveNode(preferredStep, fallbackStep) || fallbackStep;
 }
 
-function moveByRoute(session, runtime, routeKey, fallbackStep) {
-  move(session, routeStep(runtime, routeKey, fallbackStep));
+function moveByRoute(session, flowEngine, fromStep, routeKey, fallbackStep) {
+  const nextStep = flowEngine.resolveRoute(fromStep, routeKey, fallbackStep);
+  move(session, nextStep || fallbackStep);
 }
 
 function renderNodeTemplate(template, values) {
