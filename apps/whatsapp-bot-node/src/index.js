@@ -347,8 +347,16 @@ function buildRecipientCandidates(to) {
 
   // Meta test recipients for AR numbers may accept 54 + area + number
   // while inbound webhooks deliver wa_id with 549 prefix.
+  // e.g. 5491130020631 → 541130020631
   if (typeof to === "string" && /^549\d+$/.test(to)) {
     candidates.push(`54${to.slice(3)}`);
+  }
+
+  // Argentina mobile old format: 549 + area(2) + number(8) → 54 + area(2) + 15 + number(8)
+  // e.g. 5491130020631 → 54111530020631
+  const arMobile = typeof to === "string" && to.match(/^549(\d{2})(\d{8})$/);
+  if (arMobile) {
+    candidates.push(`54${arMobile[1]}15${arMobile[2]}`);
   }
 
   return [...new Set(candidates)];
