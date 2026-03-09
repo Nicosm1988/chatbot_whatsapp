@@ -39,6 +39,11 @@ Build a production WhatsApp chatbot for **Farmacia Delko** with:
 - `KV_REST_API_URL`
 - `KV_REST_API_TOKEN`
 - Fallback: in-memory map (dev only, non-persistent).
+- Current default provider supports PostgreSQL/Neon when `DATABASE_URL` is available.
+- Provider selection:
+  - `AUDIT_STORAGE_PROVIDER=postgres` forces Neon/Postgres.
+  - `AUDIT_STORAGE_PROVIDER=kv` keeps legacy KV mode.
+  - `auto` chooses Postgres when configured, otherwise KV.
 
 ## Pending strategic backlog (high level)
 - Meta official account go-live checklist and webhook hardening.

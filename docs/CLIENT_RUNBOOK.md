@@ -21,6 +21,8 @@ Last update: 2026-03-08
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - `WHATSAPP_APP_SECRET`
 - `BUSINESS_DISPLAY_NAME=Farmacia Delko`
+- `DATABASE_URL` (Neon/Postgres principal)
+- `AUDIT_STORAGE_PROVIDER=postgres`
 - `KV_REST_API_URL` (for persistent audit)
 - `KV_REST_API_TOKEN` (for persistent audit)
 - `AUDIT_ALLOW_MEMORY_FALLBACK=false` (en produccion)

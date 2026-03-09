@@ -30,6 +30,12 @@
   - if persistent storage is not configured, conversation APIs return `audit_storage_unavailable` (503)
   - memory fallback is disabled by default in production
   - dashboard surfaces explicit storage status instead of inconsistent counts
+- Added Neon/Postgres integration and switched audit architecture to provider-based routing:
+  - `conversation_audit_postgres_store.js` (new primary)
+  - `conversation_audit_kv_store.js` (legacy)
+  - `conversation_audit_store.js` wrapper by provider env
+- Added SQL schema file: `apps/whatsapp-bot-node/sql/audit_schema.sql`
+- Imported existing KV conversations into Neon before switching provider.
 
 ## Maintenance rule
 After every major product change, update:
