@@ -635,8 +635,9 @@ function renderConversationDashboard() {
       }
 
       listEl.innerHTML=filtered.map(function(r){
-        var displayName=r.contactName||("Cliente "+String(r.contactId||"").slice(-4));
-        var preview=r.summary||(statusLabel(r.status)==="Cerrado"?"Conversación cerrada":"Conversación en curso");
+        var phone=prettyPhone(r.contactId);
+        var displayName=(r.contactName && String(r.contactName).trim())||phone;
+        var preview=phone;
         var unread=Number(r.unreadCount||0);
         var labels=getClientFacingTags(r.tags);
         var labelsHtml=labels.length?'<div class="wa-labels">'+labels.map(function(t){
@@ -648,7 +649,6 @@ function renderConversationDashboard() {
           '<div class="wa-bottom">'+
             '<div class="wa-preview">'+esc(preview)+'</div>'+
             '<div class="wa-right">'+
-              '<span class="pill '+statusClass(r.status)+'">'+statusLabel(r.status)+'</span>'+
               (unread?'<span class="wa-badge">'+(unread>99?"99+":unread)+'</span>':'')+
             '</div>'+
           '</div>'+
