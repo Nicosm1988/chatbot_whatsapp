@@ -45,18 +45,6 @@ function renderConversationDashboard() {
       padding:3px 8px;
       color:#9fd6ff;
     }
-    .tag.prominent{
-      font-size:11px;
-      padding:5px 10px;
-      font-weight:700;
-      letter-spacing:.04em;
-    }
-    .tag.delivery,.tag.mode-delivery{background:rgba(57,167,255,.18);border-color:rgba(57,167,255,.48);color:#b8e5ff}
-    .tag.mostrador,.tag.mode-mostrador{background:rgba(255,180,87,.16);border-color:rgba(255,180,87,.45);color:#ffd39a}
-    .tag.particular,.tag.category-particular{background:rgba(41,203,141,.16);border-color:rgba(41,203,141,.44);color:#9ce6c6}
-    .tag.programa_obesidad_y_diabetes,.tag.category-programa{background:rgba(233,96,164,.16);border-color:rgba(233,96,164,.45);color:#ffc2df}
-    .tag.obra_social,.tag.category-obra-social{background:rgba(126,132,255,.16);border-color:rgba(126,132,255,.45);color:#ccd0ff}
-    .tag.test_run,.tag.misc-prueba{background:rgba(255,122,122,.16);border-color:rgba(255,122,122,.45);color:#ffc2c2}
     .status{margin-left:auto;color:var(--muted);font-size:12px}
     .ctrl,.btn{
       border:1px solid var(--stroke);
@@ -72,232 +60,23 @@ function renderConversationDashboard() {
     .main{min-height:0;display:grid;grid-template-columns:360px 1fr;gap:12px}
     .panel{min-height:0;background:var(--surface);border:1px solid var(--stroke);border-radius:14px;overflow:hidden;display:grid;grid-template-rows:auto 1fr}
     .ph{padding:10px 12px;border-bottom:1px solid var(--stroke);font-weight:700;font-size:13px;background:#0f192a}
-    .panel.chats-panel{background:#111b21;border-color:#0b141a}
-    .panel.chats-panel .ph{background:#202c33;color:#e9edef;border-bottom-color:#0b141a}
-    .list{overflow:auto;padding:0;display:block;background:#111b21}
-    .item{
-      display:grid;
-      grid-template-columns:49px 1fr auto;
-      grid-template-rows:auto auto;
-      column-gap:12px;
-      row-gap:2px;
-      align-items:center;
-      padding:10px 13px 10px 13px;
-      cursor:pointer;
-      background:#111b21;
-      border:0;
-      border-bottom:1px solid rgba(134,150,160,.12);
-      border-radius:0;
-    }
-    .item:hover{background:#202c33}
-    .item.active{background:#2a3942}
-    .item .wa-avatar{
-      grid-row:1 / span 2;
-      width:49px;height:49px;border-radius:50%;
-      display:grid;place-items:center;
-      background:linear-gradient(135deg,#00a884,#008069);
-      color:#e9edef;font-weight:700;font-size:16px;
-    }
-    .item .wa-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-    .item .name{font-weight:500;font-size:15px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .item .wa-time{font-size:12px;color:#8696a0;flex:0 0 auto}
-    .item.unread .wa-time{color:#00a884;font-weight:600}
-    .item .wa-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-    .item .wa-preview{
-      font-size:13.5px;color:#8696a0;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-      display:flex;align-items:center;gap:4px;min-width:0;flex:1;
-    }
-    .item .wa-right{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-    .item .wa-badge{
-      background:#00a884;color:#111b21;
-      border-radius:999px;min-width:20px;height:20px;
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:0 6px;font-size:11px;font-weight:700;
-    }
-    .item .wa-labels{
-      grid-column:2 / span 2;
-      display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;
-    }
-    .wa-label{
-      display:inline-flex;align-items:center;gap:5px;
-      font-size:11px;line-height:1;
-      padding:3px 8px 3px 7px;border-radius:4px;
-      background:rgba(255,255,255,.06);color:#d1d7db;
-      border:1px solid rgba(134,150,160,.2);
-    }
-    .wa-label::before{
-      content:"";width:7px;height:7px;border-radius:50%;
-      background:var(--dot,#00a884);display:inline-block;
-    }
-    .wa-label.delivery{--dot:#39a7ff}
-    .wa-label.mostrador{--dot:#ffb457}
-    .wa-label.particular{--dot:#29cb8d}
-    .wa-label.programa_obesidad_y_diabetes{--dot:#e960a4}
-    .wa-label.obra_social{--dot:#7e84ff}
-    .wa-label.test_run{--dot:#ff7a7a}
-    .top-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .list{overflow:auto;padding:10px;display:grid;gap:9px}
+    .item{border:1px solid #2b4366;border-radius:12px;padding:10px;cursor:pointer;background:#14233a}
+    .item:hover{border-color:#4e74a6}
+    .item.active{border-color:#63bdff;box-shadow:0 0 0 1px rgba(99,189,255,.28) inset}
+    .name{font-weight:700;font-size:14px}
     .meta{font-size:12px;color:var(--muted);margin-top:4px}
     .pill{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}
     .pill.open{background:rgba(57,167,255,.18);color:#9ed7ff}
     .pill.pending{background:rgba(255,180,87,.16);color:#ffc983}
     .pill.closed{background:rgba(41,203,141,.17);color:#84e4bc}
-    .timeline{
-      overflow:auto;
-      padding:14px;
-      background:
-        radial-gradient(circle at 15% 15%,rgba(255,255,255,.02),transparent 22%),
-        radial-gradient(circle at 80% 30%,rgba(255,255,255,.025),transparent 24%),
-        linear-gradient(180deg,#0a131f 0%,#0d1726 100%);
-    }
-    .chat-shell{min-height:100%;display:grid;grid-template-rows:auto 1fr;gap:14px}
-    .chat-head{
-      display:grid;
-      gap:12px;
-      padding:14px;
-      border:1px solid #294463;
-      border-radius:18px;
-      background:linear-gradient(180deg,rgba(19,35,61,.96),rgba(14,26,45,.98));
-      box-shadow:0 18px 42px rgba(0,0,0,.18);
-    }
-    .chat-person{display:flex;align-items:center;gap:12px}
-    .avatar{
-      width:42px;
-      height:42px;
-      border-radius:50%;
-      display:grid;
-      place-items:center;
-      background:linear-gradient(135deg,rgba(57,167,255,.33),rgba(57,167,255,.14));
-      border:1px solid rgba(118,197,255,.38);
-      color:#dff2ff;
-      font-weight:700;
-      font-size:14px;
-      flex:0 0 auto;
-    }
-    .chat-copy{min-width:0;display:grid;gap:4px}
-    .chat-name{font-size:15px;font-weight:700}
-    .chat-sub{font-size:12px;color:var(--muted)}
-    .chat-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#bfd2eb}
-    .chat-meta span{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 9px;
-      border-radius:999px;
-      background:rgba(255,255,255,.04);
-      border:1px solid rgba(112,145,182,.22);
-    }
-    .chat-board{display:grid;gap:10px;align-content:start}
-    .day-chip{
-      justify-self:center;
-      padding:5px 12px;
-      border-radius:999px;
-      background:rgba(11,28,44,.9);
-      border:1px solid rgba(73,114,155,.38);
-      color:#b7d1ef;
-      font-size:11px;
-      letter-spacing:.03em;
-    }
-    .chat-row{display:flex}
-    .chat-row.out{justify-content:flex-start}
-    .chat-row.in{justify-content:flex-end}
-    .chat-row.note{justify-content:center}
-    .bubble{
-      max-width:min(78%,680px);
-      padding:10px 12px 8px;
-      border-radius:16px;
-      box-shadow:0 14px 28px rgba(0,0,0,.12);
-      display:grid;
-      gap:8px;
-    }
-    .bubble.out{
-      background:#1f2c39;
-      border:1px solid rgba(81,113,146,.34);
-      border-top-left-radius:8px;
-    }
-    .bubble.in{
-      background:#005c4b;
-      border:1px solid rgba(24,201,146,.3);
-      border-top-right-radius:8px;
-    }
-    .bubble.note{
-      max-width:520px;
-      text-align:center;
-      padding:8px 12px;
-      background:rgba(18,35,56,.92);
-      border:1px solid rgba(88,129,171,.34);
-      color:#cfe4ff;
-      font-size:12px;
-    }
-    .bubble-text{
-      font-size:13px;
-      line-height:1.5;
-      color:#ecf5ff;
-      word-break:break-word;
-    }
-    .bubble-media{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 10px;
-      border-radius:12px;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.08);
-      color:#d7ebff;
-      font-size:12px;
-      width:max-content;
-      max-width:100%;
-    }
-    .bubble-options{display:grid;gap:8px}
-    .choice-stack{display:grid;gap:7px}
-    .choice-button{
-      display:block;
-      width:100%;
-      padding:8px 10px;
-      border-radius:11px;
-      background:rgba(255,255,255,.07);
-      border:1px solid rgba(255,255,255,.09);
-      color:#def2ff;
-      font-size:12px;
-      text-align:left;
-    }
-    .choice-sheet{
-      border-radius:13px;
-      overflow:hidden;
-      border:1px solid rgba(90,123,159,.28);
-      background:rgba(10,18,31,.22);
-    }
-    .choice-sheet-title{
-      padding:8px 10px;
-      font-size:11px;
-      text-transform:uppercase;
-      letter-spacing:.06em;
-      color:#9fc9ef;
-      background:rgba(255,255,255,.04);
-      border-bottom:1px solid rgba(255,255,255,.06);
-    }
-    .choice-sheet-group{
-      padding:8px 10px 6px;
-      font-size:11px;
-      text-transform:uppercase;
-      letter-spacing:.05em;
-      color:#99bce0;
-      background:rgba(255,255,255,.03);
-    }
-    .choice-row{
-      display:grid;
-      gap:2px;
-      padding:9px 10px;
-      border-top:1px solid rgba(255,255,255,.05);
-      background:rgba(255,255,255,.03);
-    }
-    .choice-row-title{font-size:12px;color:#edf6ff}
-    .choice-row-desc{font-size:11px;color:#a6c3e2}
-    .bubble-time{
-      justify-self:end;
-      font-size:11px;
-      color:rgba(225,242,255,.72);
-    }
+    .timeline{overflow:auto;padding:12px;display:grid;gap:10px}
+    .summary{border:1px solid #2d4568;background:#13243d;border-radius:12px;padding:10px;display:grid;gap:4px}
+    .srow{font-size:13px;color:#d8e9ff}
+    .event{border:1px solid #2b4467;border-radius:12px;padding:10px;background:#112038}
+    .etype{font-weight:700;font-size:13px}
+    .etime{font-size:11px;color:var(--muted)}
+    .edesc{margin-top:6px;font-size:13px;line-height:1.45;color:#d8e8ff}
     .empty{padding:16px;color:var(--muted);font-size:13px}
     @media (max-width:980px){.main{grid-template-columns:1fr;grid-template-rows:44% 56%}}
   </style>
@@ -306,7 +85,7 @@ function renderConversationDashboard() {
   <main class="app">
     <section class="top">
       <div class="line"><span class="tag">cliente</span><h1 class="title">Seguimiento de Conversaciones</h1><span id="status" class="status">Cargando...</span></div>
-      <p class="sub">Visualizá cada conversación como si fuera el WhatsApp Web de la farmacia, con etiquetas claras y sin texto técnico.</p>
+      <p class="sub">Visualiza que paso en cada caso, como se atendio y como termino, con texto claro y sin informacion tecnica.</p>
       <div class="line">
         <input class="ctrl" id="q-contact" placeholder="Buscar por telefono o nombre" />
         <select class="ctrl" id="q-status">
@@ -314,17 +93,6 @@ function renderConversationDashboard() {
           <option value="open">Abierto</option>
           <option value="agent_pending">Con asesor</option>
           <option value="closed">Cerrado</option>
-        </select>
-        <select class="ctrl" id="q-mode">
-          <option value="">Delivery y mostrador</option>
-          <option value="delivery">Delivery</option>
-          <option value="mostrador">Mostrador</option>
-        </select>
-        <select class="ctrl" id="q-category">
-          <option value="">Todos los programas</option>
-          <option value="particular">Particular</option>
-          <option value="programa_obesidad_y_diabetes">Programa obesidad y diabetes</option>
-          <option value="obra_social">Obra social</option>
         </select>
         <select class="ctrl" id="q-tag">
           <option value="">Todo</option>
@@ -335,12 +103,12 @@ function renderConversationDashboard() {
     </section>
 
     <section class="main">
-      <section class="panel chats-panel">
-        <header class="ph">Chats</header>
+      <section class="panel">
+        <header class="ph">Casos</header>
         <div id="list" class="list"></div>
       </section>
       <section class="panel">
-        <header class="ph">Conversación</header>
+        <header class="ph">Detalle del Caso</header>
         <div id="timeline" class="timeline"></div>
       </section>
     </section>
@@ -356,13 +124,9 @@ function renderConversationDashboard() {
     var statusEl = document.getElementById("status");
     var qContact = document.getElementById("q-contact");
     var qStatus = document.getElementById("q-status");
-    var qMode = document.getElementById("q-mode");
-    var qCategory = document.getElementById("q-category");
     var qTag = document.getElementById("q-tag");
     var bRefresh = document.getElementById("b-refresh");
     var tagLocked = false;
-    var AUTO_REFRESH_MS = 12000;
-    var NL = String.fromCharCode(10);
 
     function esc(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
     function fmt(ts){try{return new Date(ts).toLocaleString("es-AR");}catch(_e){return ts||"-";}}
@@ -370,127 +134,6 @@ function renderConversationDashboard() {
     function normalize(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
     function statusClass(status){if(status==="closed")return"closed";if(status==="agent_pending")return"pending";return"open";}
     function statusLabel(status){if(status==="closed")return"Cerrado";if(status==="agent_pending")return"Con asesor";return"Abierto";}
-    function fmtClock(ts){
-      try{return new Date(ts).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});}catch(_e){return"";}
-    }
-    function fmtDay(ts){
-      try{return new Date(ts).toLocaleDateString("es-AR",{day:"numeric",month:"short",year:"numeric"});}catch(_e){return"";}
-    }
-    function chatDayKey(ts){
-      try{
-        var d=new Date(ts);
-        return [d.getFullYear(),d.getMonth()+1,d.getDate()].join("-");
-      }catch(_e){
-        return String(ts||"");
-      }
-    }
-    function textToHtml(text){
-      return esc(text).split(NL).join("<br />");
-    }
-    function contactInitials(name, contactId){
-      var source=String(name||"").trim();
-      if(source){
-        var tokens=source.split(" ").filter(Boolean).slice(0,2);
-        if(tokens.length){return tokens.map(function(token){return token.charAt(0).toUpperCase();}).join("");}
-      }
-      return String(contactId||"").slice(-2) || "CL";
-    }
-    function prettyPhone(value){
-      var digits=String(value||"").replace(/[^0-9]/g,"");
-      if(digits.indexOf("549")===0 && digits.length===13){
-        return "+54 9 "+digits.slice(3,5)+" "+digits.slice(5,9)+"-"+digits.slice(9);
-      }
-      if(digits.indexOf("54")===0 && digits.length===12){
-        return "+54 "+digits.slice(2,4)+" "+digits.slice(4,8)+"-"+digits.slice(8);
-      }
-      if(digits){return digits;}
-      return "Sin número visible";
-    }
-    function formatChatText(value){
-      var text=String(value||"").trim();
-      if(!text){return "";}
-      [
-        "Producto:",
-        "Laboratorio / marca:",
-        "Laboratorio:",
-        "Marca:",
-        "Presentación:",
-        "Stock:",
-        "Detalle:",
-        "Precio:",
-        "Opciones de pago:",
-        "Productos en el pedido:",
-        "Recetario Solidario:",
-        "Totales del pedido:",
-        "Totales con descuentos:",
-        "Formas de pago:",
-        "Delivery:",
-        "Entre calles:",
-        "Barrio:",
-        "Mail:",
-        "Nombre:",
-        "Apellido:",
-        "Dirección:"
-      ].forEach(function(label){
-        text=text.split(" - "+label).join(NL+"• "+label);
-        text=text.split(" • "+label).join(NL+"• "+label);
-      });
-      [
-        "Particular ef/transf (25%):",
-        "Particular debito (20%):",
-        "Particular credito (10% + 3 cuotas):",
-        "FTCheq 30% + Delko 20% ef/transf:"
-      ].forEach(function(label){
-        text=text.split(" "+label).join(NL+label);
-      });
-      [
-        "¿Querés agregar algo más o terminar la compra?",
-        "Antes de cerrar el pedido, ¿estás adherido al Recetario Solidario?",
-        "Podés escribirlo como te quede más cómodo.",
-        "Página "
-      ].forEach(function(marker){
-        var idx=text.indexOf(" "+marker);
-        if(idx>=0){text=text.slice(0,idx)+NL+text.slice(idx+1);}
-      });
-      return text;
-    }
-    function friendlyTagLabel(tag){
-      var map={
-        delivery:"Delivery",
-        mostrador:"Mostrador",
-        particular:"Particular",
-        programa_obesidad_y_diabetes:"Programa obesidad y diabetes",
-        obra_social:"Obra social",
-        test_run:"Prueba"
-      };
-      return map[String(tag||"").trim()]||"";
-    }
-    function getClientFacingTags(tags){
-      return ["delivery","mostrador","particular","programa_obesidad_y_diabetes","obra_social","test_run"]
-        .filter(function(tag){ return Array.isArray(tags) && tags.indexOf(tag) >= 0; })
-        .map(function(tag){ return { id: tag, label: friendlyTagLabel(tag) }; });
-    }
-    function tagTone(tagId){
-      var map={
-        delivery:"delivery mode-delivery",
-        mostrador:"mostrador mode-mostrador",
-        particular:"particular category-particular",
-        programa_obesidad_y_diabetes:"programa_obesidad_y_diabetes category-programa",
-        obra_social:"obra_social category-obra-social",
-        test_run:"test_run misc-prueba"
-      };
-      return map[String(tagId||"").trim()]||"";
-    }
-    function renderTagChips(tags, opts){
-      var chips=getClientFacingTags(tags);
-      var options=opts||{};
-      if(!chips.length){return "";}
-      var wrapperClass=options.prominent ? "top-tags" : "line";
-      var wrapperStyle=options.prominent ? "" : ' style="margin-top:6px;gap:6px"';
-      return '<div class="'+wrapperClass+'"'+wrapperStyle+'>'+chips.map(function(tag){
-        return '<span class="tag '+tagTone(tag.id)+' '+(options.prominent?'prominent':'')+'">'+esc(tag.label)+'</span>';
-      }).join("")+'</div>';
-    }
     function handleLoadError(err){
       if(String(err&&err.message||"").includes("status_503")){
         setStatus("Historial no disponible: falta base de datos persistente");
@@ -516,107 +159,49 @@ function renderConversationDashboard() {
         clearTimeout(timeout);
       }
     }
-    function renderButtons(buttons){
-      if(!Array.isArray(buttons) || !buttons.length){return "";}
-      return '<div class="choice-stack">'+buttons.map(function(button){
-        return '<div class="choice-button">'+esc(button.title||"Opción")+'</div>';
-      }).join("")+'</div>';
+    function friendlyStep(step){
+      var map={menu:"Menu principal",mode:"Seleccion de modalidad",zone:"Seleccion de zona",address_decision:"Confirmacion de direccion",address_input:"Carga de direccion",pickup_branch:"Seleccion de sucursal",order_type:"Tipo de pedido",receta_upload:"Carga de receta",credential_upload:"Carga de credencial",item_input:"Carga de productos",item_decision:"Confirmacion de pedido",agent_continue:"Continuacion",agent_add_more:"Agregar mas",payment_proof:"Comprobante de pago",survey:"Encuesta final",returning:"Cliente recurrente"};
+      return map[String(step||"").trim()]||"En curso";
     }
-    function renderListSections(action){
-      var sections=Array.isArray(action&&action.sections)?action.sections:[];
-      if(!sections.length){return "";}
-      return '<div class="choice-sheet">'+
-        (action&&action.buttonText?'<div class="choice-sheet-title">'+esc(action.buttonText)+'</div>':'')+
-        sections.map(function(section){
-          var rows=Array.isArray(section&&section.rows)?section.rows:[];
-          return (section&&section.title?'<div class="choice-sheet-group">'+esc(section.title)+'</div>':'')+rows.map(function(row){
-            return '<div class="choice-row"><div class="choice-row-title">'+esc(row.title||"Opción")+'</div>'+(row&&row.description?'<div class="choice-row-desc">'+esc(row.description)+'</div>':'')+'</div>';
-          }).join("");
-        }).join("")+
-      '</div>';
+
+    function friendlyEventType(type){
+      if(type==="inbound_message")return"Mensaje del cliente";
+      if(type==="outbound_message")return"Respuesta del sistema";
+      if(type==="flow_transition")return"Avance del caso";
+      return"Actividad";
     }
-    function renderActionOptions(action){
-      if(!action || action.type!=="interactive"){return "";}
-      if(action.interactiveType==="list"){return renderListSections(action);}
-      return renderButtons(action.buttons||[]);
-    }
-    function systemNoteText(payload){
-      var transition=payload&&payload.transition||{};
-      if(payload&&payload.handedToHuman){return "Desde este punto sigue un asesor de la farmacia.";}
-      if(payload&&payload.closed && transition.routeKey==="auto_close_inactivity"){return "La conversación se cerró por falta de respuesta.";}
-      if(payload&&payload.closed){return "La conversación quedó cerrada.";}
-      return "";
-    }
-    function buildTranscriptEntries(events){
-      return (events||[]).map(function(ev){
-        var type=String(ev&&ev.type||"");
-        var payload=ev&&ev.payload||{};
-        if(type==="inbound_message"){
-          var inbound=payload.inbound||{};
-          return {
-            kind:"message",
-            side:"in",
-            timestamp:ev.timestamp,
-            text: formatChatText(inbound.text || (inbound.hasMedia ? "Foto o archivo enviado." : "Mensaje recibido.")),
-            mediaLabel: inbound.hasMedia ? (inbound.type==="image" ? "Foto enviada" : "Archivo enviado") : ""
-          };
-        }
-        if(type==="outbound_message"){
-          if(payload.status==="failed"){return null;}
-          var action=payload.action||{};
-          return {
-            kind:"message",
-            side:"out",
-            timestamp:ev.timestamp,
-            text: formatChatText(action.text || (action.type==="image" ? "Imagen enviada." : "")),
-            mediaLabel: action.type==="image" ? "Imagen enviada por la farmacia" : "",
-            optionsHtml: renderActionOptions(action)
-          };
-        }
-        if(type==="flow_transition"){
-          var note=systemNoteText(payload);
-          if(!note){return null;}
-          return {
-            kind:"note",
-            side:"note",
-            timestamp:ev.timestamp,
-            text:note
-          };
-        }
-        return null;
-      }).filter(Boolean);
-    }
-    function renderTranscriptEntry(entry){
-      if(entry.kind==="note"){
-        return '<div class="chat-row note"><div class="bubble note"><div class="bubble-text">'+textToHtml(entry.text)+'</div></div></div>';
+
+    function describeEvent(ev){
+      var type=String(ev&&ev.type||"");
+      var p=ev&&ev.payload||{};
+      if(type==="inbound_message"){
+        var inbound=p.inbound||{};
+        if(inbound.hasMedia){return "El cliente envio un archivo o imagen.";}
+        if(inbound.buttonId){return "El cliente eligio una opcion del menu.";}
+        if(inbound.text){return "El cliente escribio: \"" + String(inbound.text).slice(0,160) + "\"";}
+        return "Se recibio un nuevo mensaje del cliente.";
       }
-      return '<div class="chat-row '+entry.side+'">'+
-        '<article class="bubble '+entry.side+'">'+
-          (entry.mediaLabel?'<div class="bubble-media">'+esc(entry.mediaLabel)+'</div>':'')+
-          (entry.text?'<div class="bubble-text">'+textToHtml(entry.text)+'</div>':'')+
-          (entry.optionsHtml?'<div class="bubble-options">'+entry.optionsHtml+'</div>':'')+
-          '<div class="bubble-time">'+esc(fmtClock(entry.timestamp))+'</div>'+
-        '</article>'+
-      '</div>';
-    }
-    function renderChatHeader(conversation){
-      var name=conversation.contactName||("Cliente "+String(conversation.contactId||"").slice(-4));
-      return '<section class="chat-head">'+
-        '<div class="chat-person">'+
-          '<div class="avatar">'+esc(contactInitials(name,conversation.contactId))+'</div>'+
-          '<div class="chat-copy">'+
-            '<div class="chat-name">'+esc(name)+'</div>'+
-            '<div class="chat-sub">'+esc(prettyPhone(conversation.contactId))+'</div>'+
-          '</div>'+
-          '<span class="pill '+statusClass(conversation.status)+'">'+statusLabel(conversation.status)+'</span>'+
-        '</div>'+
-        renderTagChips(conversation.tags,{prominent:true})+
-        '<div class="chat-meta">'+
-          '<span>Empezó '+esc(fmt(conversation.openedAt))+'</span>'+
-          '<span>'+(conversation.closedAt ? "Cerró "+esc(fmt(conversation.closedAt)) : "Sigue abierto")+'</span>'+
-          '<span>'+esc(conversation.summary||"Sin resumen todavía")+'</span>'+
-        '</div>'+
-      '</section>';
+      if(type==="outbound_message"){
+        if(p.status==="failed"){return "No se pudo enviar un mensaje automatico. Se recomienda revisar.";}
+        var action=p.action||{};
+        if(action.type==="interactive"){
+          var buttons=(action.buttons||[]).map(function(b){return b.title;}).filter(Boolean);
+          if(buttons.length){return "El sistema mostro opciones: " + buttons.slice(0,4).join(", ") + ".";}
+          return "El sistema mostro opciones para continuar.";
+        }
+        if(action.type==="image"){return "El sistema envio una imagen informativa.";}
+        if(action.type==="text"){return "El sistema respondio: \"" + String(action.text||"").slice(0,160) + "\"";}
+        return "El sistema envio una respuesta automatica.";
+      }
+      if(type==="flow_transition"){
+        if(p.handedToHuman){return "El caso fue derivado a un asesor humano.";}
+        if(p.closed){return "El caso se cerro correctamente.";}
+        var fromStep=friendlyStep(p.before&&p.before.step);
+        var toStep=friendlyStep(p.after&&p.after.step);
+        if(fromStep!==toStep){return "El caso avanzo de \"" + fromStep + "\" a \"" + toStep + "\".";}
+        return "El caso continuo dentro del flujo automatico.";
+      }
+      return "Se registro una actividad del caso.";
     }
 
     function renderList(rows){
@@ -636,23 +221,11 @@ function renderConversationDashboard() {
 
       listEl.innerHTML=filtered.map(function(r){
         var displayName=r.contactName||("Cliente "+String(r.contactId||"").slice(-4));
-        var preview=r.summary||(statusLabel(r.status)==="Cerrado"?"Conversación cerrada":"Conversación en curso");
-        var unread=Number(r.unreadCount||0);
-        var labels=getClientFacingTags(r.tags);
-        var labelsHtml=labels.length?'<div class="wa-labels">'+labels.map(function(t){
-          return '<span class="wa-label '+esc(t.id)+'">'+esc(t.label)+'</span>';
-        }).join("")+'</div>':'';
-        return '<article class="item '+(r.id===currentId?'active':'')+(unread?' unread':'')+'" data-id="'+esc(r.id)+'">'+
-          '<div class="wa-avatar">'+esc(contactInitials(displayName,r.contactId))+'</div>'+
-          '<div class="wa-top"><div class="name">'+esc(displayName)+'</div><div class="wa-time">'+esc(fmtClock(r.lastEventAt)||fmtDay(r.lastEventAt))+'</div></div>'+
-          '<div class="wa-bottom">'+
-            '<div class="wa-preview">'+esc(preview)+'</div>'+
-            '<div class="wa-right">'+
-              '<span class="pill '+statusClass(r.status)+'">'+statusLabel(r.status)+'</span>'+
-              (unread?'<span class="wa-badge">'+(unread>99?"99+":unread)+'</span>':'')+
-            '</div>'+
-          '</div>'+
-          labelsHtml+
+        return '<article class="item '+(r.id===currentId?'active':'')+'" data-id="'+esc(r.id)+'">'+
+          '<div class="line" style="justify-content:space-between;align-items:center"><div class="name">'+esc(displayName)+'</div><span class="pill '+statusClass(r.status)+'">'+statusLabel(r.status)+'</span></div>'+
+          '<div class="meta">Ultimo paso: '+esc(friendlyStep(r.currentStep))+'</div>'+
+          '<div class="meta">Resumen: '+esc(r.summary||"Sin resumen todavia")+'</div>'+
+          '<div class="meta">Actualizado: '+esc(fmt(r.lastEventAt))+'</div>'+
         '</article>';
       }).join("");
 
@@ -670,33 +243,30 @@ function renderConversationDashboard() {
         timelineEl.innerHTML='<div class="empty">Selecciona un caso para ver el detalle.</div>';
         return;
       }
-      var transcript=buildTranscriptEntries(events);
-      var lastDay="";
-      var transcriptHtml=transcript.map(function(entry){
-        var currentDay=chatDayKey(entry.timestamp);
-        var prefix="";
-        if(currentDay!==lastDay){
-          prefix='<div class="day-chip">'+esc(fmtDay(entry.timestamp))+'</div>';
-          lastDay=currentDay;
-        }
-        return prefix+renderTranscriptEntry(entry);
+
+      var summaryHtml='<article class="summary">'+
+        '<div class="srow"><strong>Estado:</strong> '+esc(statusLabel(c.status))+'</div>'+
+        '<div class="srow"><strong>Inicio:</strong> '+esc(fmt(c.openedAt))+'</div>'+
+        '<div class="srow"><strong>Cierre:</strong> '+esc(c.closedAt?fmt(c.closedAt):"Todavia abierto")+'</div>'+
+        '<div class="srow"><strong>Resolucion:</strong> '+esc(c.resolver==="human"?"Asesor humano":"Automatica")+'</div>'+
+        '<div class="srow"><strong>Resumen:</strong> '+esc(c.summary||"Sin resumen todavia")+'</div>'+
+      '</article>';
+
+      var eventsHtml=events.map(function(ev){
+        return '<article class="event">'+
+          '<div class="line" style="justify-content:space-between;align-items:center"><span class="etype">'+esc(friendlyEventType(ev.type))+'</span><span class="etime">'+esc(fmt(ev.timestamp))+'</span></div>'+
+          '<div class="edesc">'+esc(describeEvent(ev))+'</div>'+
+        '</article>';
       }).join("");
 
-      timelineEl.innerHTML='<section class="chat-shell">'+
-        renderChatHeader(c)+
-        '<section class="chat-board">'+(transcriptHtml||'<div class="empty">Todavía no hay mensajes para mostrar.</div>')+'</section>'+
-      '</section>';
+      timelineEl.innerHTML=summaryHtml+(eventsHtml||'<div class="empty">Aun no hay actividades registradas.</div>');
     }
 
     async function loadList(){
       setStatus("Cargando casos...");
       var qs=new URLSearchParams({limit:"120"});
       if(qStatus.value)qs.set("status",qStatus.value);
-      var tags=[];
-      if(qMode.value)tags.push(qMode.value);
-      if(qCategory.value)tags.push(qCategory.value);
-      if(qTag.value)tags.push(qTag.value);
-      if(tags.length){qs.set("tag",tags.join(","));}
+      if(qTag.value)qs.set("tag",qTag.value);
       var rows=await fetchJsonWithTimeout("/api/conversations?"+qs.toString(),9000,"list");
       currentRows = Array.isArray(rows) ? rows : [];
       if(currentId && !currentRows.some(function(r){ return r.id===currentId; })){
@@ -704,9 +274,7 @@ function renderConversationDashboard() {
       }
       renderList(currentRows);
       setStatus(currentRows.length+" casos cargados");
-      if(currentId && currentRows.some(function(r){ return r.id===currentId; })){
-        await openConversation(currentId,{skipReload:true});
-      } else if(!currentId && currentRows[0]){
+      if(!currentId && currentRows[0]){
         await openConversation(currentRows[0].id,{skipReload:true});
       } else if(!currentRows.length){
         timelineEl.innerHTML='<div class="empty">Todavia no hay conversaciones registradas o hubo un problema de conectividad.</div>';
@@ -724,21 +292,13 @@ function renderConversationDashboard() {
 
     bRefresh.onclick=function(){loadList().catch(handleLoadError);};
     qStatus.onchange=function(){loadList().catch(handleLoadError);};
-    qMode.onchange=function(){loadList().catch(handleLoadError);};
-    qCategory.onchange=function(){loadList().catch(handleLoadError);};
     qTag.onchange=function(){loadList().catch(handleLoadError);};
     qContact.onkeydown=function(ev){if(ev.key==="Enter"){loadList().catch(handleLoadError);}};
 
     var init=new URLSearchParams(window.location.search||"");
     if(init.get("status"))qStatus.value=init.get("status");
     if(init.get("tag")){
-      var initialTags=String(init.get("tag")||"").trim().split(",").map(function(v){ return String(v||"").trim(); }).filter(Boolean);
-      if(initialTags.indexOf("delivery") >= 0) qMode.value = "delivery";
-      if(initialTags.indexOf("mostrador") >= 0) qMode.value = "mostrador";
-      if(initialTags.indexOf("particular") >= 0) qCategory.value = "particular";
-      if(initialTags.indexOf("programa_obesidad_y_diabetes") >= 0) qCategory.value = "programa_obesidad_y_diabetes";
-      if(initialTags.indexOf("obra_social") >= 0) qCategory.value = "obra_social";
-      if(initialTags.indexOf("test_run") >= 0) qTag.value = "test_run";
+      qTag.value=String(init.get("tag")||"").trim();
       if(qTag.value==="test_run"){
         tagLocked = true;
         qTag.disabled = true;
@@ -751,10 +311,6 @@ function renderConversationDashboard() {
     }
 
     loadList().catch(handleLoadError);
-    window.setInterval(function(){
-      if(document.hidden){return;}
-      loadList().catch(handleLoadError);
-    }, AUTO_REFRESH_MS);
   </script>
 </body>
 </html>`;
