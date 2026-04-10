@@ -1,14 +1,17 @@
-const crypto = require("crypto");
 const express = require("express");
 
 const { config } = require("./config");
 const { nextBotReply: nextRuleBotReply } = require("./conversation_rules");
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
+const { getPharmacyLookupStatus } = require("./pharmacy_system_lookup");
+const { buildSystemReadiness } = require("./runtime_readiness");
+const { getWebhookSignatureStatus, validateWebhookSignature } = require("./webhook_security");
 const { getWorkflowCatalog, saveWorkflowCatalog, resetWorkflowCatalog } = require("./workflow_store");
 const { renderFlowDashboard } = require("./flow_dashboard");
 const { renderFlowClientDashboard } = require("./flow_client_dashboard");
 const { renderConversationDashboard } = require("./conversation_dashboard");
 const { renderControlCenterDashboard } = require("./control_center_dashboard");
+const { buildCompanionPayload } = require("./whatsapp_web_companion");
 const {
   recordInboundMessage,
   recordFlowTransition,
@@ -16,23 +19,43 @@ const {
   listConversations,
   getConversationDetail,
   getConversationSummary,
-  getAuditStorageStatus
+  getAuditStorageStatus,
+  addConversationTag
 } = require("./conversation_audit_store");
-const { sendTextMessage, sendInteractiveButtons, sendImageMessage } = require("./metaClient");
+const { processInactivityConversations } = require("./inactivity_cron");
+const { sendTextMessage, sendInteractiveButtons, sendInteractiveList, sendImageMessage } = require("./metaClient");
+const { getBotMode, setBotMode, HOLDING_MESSAGE, VALID_MODES } = require("./bot_mode_store");
 
 const app = express();
 const processedMessageIds = new Set();
+const webhookSignatureStatus = getWebhookSignatureStatus(config);
+
+app.disable("x-powered-by");
 
 app.use(
   express.json({
+    limit: `${config.whatsappWebhookBodyLimitKb}kb`,
     verify(req, _res, buf) {
       req.rawBody = buf;
     }
   })
 );
 
+if (!config.whatsappMockMode && !webhookSignatureStatus.hardened) {
+  console.warn(`Webhook signature hardening is not fully enforced yet (mode=${webhookSignatureStatus.mode}).`);
+}
+
 app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true });
+  const readiness = getSystemReadiness();
+  res.status(200).json({
+    ok: true,
+    ready: readiness.ok
+  });
+});
+
+app.get("/api/system/ready", (_req, res) => {
+  const readiness = getSystemReadiness();
+  res.status(readiness.ok ? 200 : 503).json(readiness);
 });
 
 app.get("/", (_req, res) => {
@@ -149,6 +172,51 @@ app.get("/api/conversations/:conversationId", async (req, res) => {
   }
 });
 
+app.get("/api/companion/conversations", async (req, res) => {
+  try {
+    const conversations = await listConversations({
+      limit: Number(req.query.limit || 180),
+      status: String(req.query.status || ""),
+      contactId: String(req.query.contactId || ""),
+      tag: String(req.query.tag || "")
+    });
+    const summary = await getConversationSummary();
+    res.status(200).json(
+      buildCompanionPayload({
+        conversations,
+        summary
+      })
+    );
+  } catch (error) {
+    console.error("Failed loading companion conversations", error);
+    sendConversationApiError(res, error, "companion_conversation_list_failed");
+  }
+});
+
+app.get("/api/cron/inactivity", async (req, res) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${process.env.CRON_SECRET}` && process.env.NODE_ENV === "production" && process.env.VERCEL) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  try {
+    const result = await processInactivityConversations({
+      listConversations,
+      dispatchAction: dispatchActionWithRecipientFallback,
+      recordOutboundMessage,
+      addConversationTag,
+      recordFlowTransition,
+      onDispatchError(conversation, error) {
+        console.error(`Failed to process inactivity follow-up for ${conversation.contactId}:`, error);
+      }
+    });
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    console.error("Cron inactivity error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -161,18 +229,49 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
+app.get("/api/bot-mode", async (_req, res) => {
+  try {
+    const mode = await getBotMode();
+    res.status(200).json({ mode, validModes: VALID_MODES, holdingMessage: HOLDING_MESSAGE });
+  } catch (error) {
+    console.error("Failed to read bot mode", error);
+    res.status(500).json({ error: "bot_mode_read_failed" });
+  }
+});
+
+app.post("/api/bot-mode", async (req, res) => {
+  try {
+    const result = await setBotMode(req.body?.mode);
+    res.status(200).json(result);
+  } catch (error) {
+    if (error?.code === "invalid_bot_mode") {
+      return res.status(400).json({ error: "invalid_bot_mode", validModes: VALID_MODES });
+    }
+    console.error("Failed to update bot mode", error);
+    res.status(500).json({ error: "bot_mode_write_failed" });
+  }
+});
+
 app.post("/webhook", async (req, res) => {
-  if (!isSignatureValid(req)) {
-    console.warn("⚠️ Recibido webhook con firma inválida.");
+  const signatureValidation = validateWebhookSignature({
+    appSecret: config.whatsappAppSecret,
+    signatureHeader: req.get("x-hub-signature-256"),
+    rawBody: req.rawBody,
+    signatureRequired: config.whatsappSignatureRequired,
+    mockMode: config.whatsappMockMode
+  });
+
+  if (!signatureValidation.valid) {
+    console.warn(`Webhook rejected due to signature validation failure: ${signatureValidation.reason}`);
     return res.sendStatus(401);
   }
 
   const payload = req.body;
-  console.log("📥 Recibido Webhook de Meta:", JSON.stringify(payload, null, 2));
+  console.log("Received Meta webhook:", JSON.stringify(payload, null, 2));
 
   try {
-    // En arquitecturas Serverless (como Vercel), debemos esperar la ejecución
-    // antes de enviar el sendStatus, de lo contrario la función "muere" prematuramente.
+    // In serverless runtimes we must complete processing before replying,
+    // otherwise the function can terminate before outbound dispatch finishes.
     await processIncomingEvent(payload);
     res.sendStatus(200);
   } catch (error) {
@@ -181,29 +280,12 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-function isSignatureValid(req) {
-  if (!config.whatsappAppSecret) {
-    return true;
-  }
-
-  const signature = req.get("x-hub-signature-256");
-  if (!signature || !req.rawBody) {
-    return false;
-  }
-
-  const expected = `sha256=${crypto
-    .createHmac("sha256", config.whatsappAppSecret)
-    .update(req.rawBody)
-    .digest("hex")}`;
-
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-
-  if (actualBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+function getSystemReadiness() {
+  return buildSystemReadiness({
+    config,
+    auditStorageStatus: getAuditStorageStatus(),
+    pharmacyLookupStatus: getPharmacyLookupStatus()
+  });
 }
 
 async function processIncomingEvent(payload) {
@@ -253,13 +335,22 @@ async function processIncomingEvent(payload) {
         } catch (error) {
           console.error("Audit inbound failed:", error?.message || error);
         }
-        const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
-        const flowResult = await replyHandler({
-          contactId: mappedFrom,
-          contactName,
-          inboundText,
-          inboundMessage: message
-        });
+        const botMode = await getBotMode();
+        let flowResult;
+        if (botMode === "holding") {
+          flowResult = {
+            actions: [{ type: "text", text: HOLDING_MESSAGE }],
+            meta: { routeKey: "holding_auto_reply", mode: "holding" }
+          };
+        } else {
+          const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
+          flowResult = await replyHandler({
+            contactId: mappedFrom,
+            contactName,
+            inboundText,
+            inboundMessage: message
+          });
+        }
 
         try {
           await recordFlowTransition({
@@ -312,14 +403,14 @@ async function dispatchActionWithRecipientFallback(to, action) {
     try {
       await sendAction(recipient, action);
       if (recipient !== to) {
-        console.log(`ℹ️ Envío exitoso con destinatario alternativo: ${recipient}`);
+        console.log(`Delivery succeeded with alternate recipient format: ${recipient}`);
       }
       return;
     } catch (error) {
       lastError = error;
 
       if (!isLastAttempt && isRecipientNotAllowedError(error)) {
-        console.warn(`⚠️ Destinatario no permitido (${recipient}). Reintentando con formato alternativo...`);
+        console.warn(`Recipient not allowed (${recipient}). Retrying with alternate format...`);
         continue;
       }
 
@@ -336,7 +427,11 @@ async function sendAction(to, action) {
   if (action.type === "text") {
     await sendTextMessage(to, action.text);
   } else if (action.type === "interactive") {
-    await sendInteractiveButtons(to, action.text, action.buttons);
+    if (action.interactiveType === "list") {
+      await sendInteractiveList(to, action.text, action.buttonText || "Ver opciones", action.sections || []);
+    } else {
+      await sendInteractiveButtons(to, action.text, action.buttons);
+    }
   } else if (action.type === "image") {
     await sendImageMessage(to, action.url, action.caption);
   }
@@ -345,15 +440,10 @@ async function sendAction(to, action) {
 function buildRecipientCandidates(to) {
   const candidates = [to];
 
-  // Meta test recipients for AR numbers may accept 54 + area + number
-  // while inbound webhooks deliver wa_id with 549 prefix.
-  // e.g. 5491130020631 → 541130020631
   if (typeof to === "string" && /^549\d+$/.test(to)) {
     candidates.push(`54${to.slice(3)}`);
   }
 
-  // Argentina mobile old format: 549 + area(2) + number(8) → 54 + area(2) + 15 + number(8)
-  // e.g. 5491130020631 → 54111530020631
   const arMobile = typeof to === "string" && to.match(/^549(\d{2})(\d{8})$/);
   if (arMobile) {
     candidates.push(`54${arMobile[1]}15${arMobile[2]}`);

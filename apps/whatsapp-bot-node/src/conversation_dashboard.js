@@ -58,6 +58,31 @@ function renderConversationDashboard() {
     .tag.obra_social,.tag.category-obra-social{background:rgba(126,132,255,.16);border-color:rgba(126,132,255,.45);color:#ccd0ff}
     .tag.test_run,.tag.misc-prueba{background:rgba(255,122,122,.16);border-color:rgba(255,122,122,.45);color:#ffc2c2}
     .status{margin-left:auto;color:var(--muted);font-size:12px}
+    .mode-toggle{
+      display:inline-flex;align-items:center;gap:10px;
+      padding:6px 12px;border-radius:999px;
+      background:rgba(57,167,255,.08);
+      border:1px solid rgba(57,167,255,.28);
+    }
+    .mode-toggle .mode-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9fd6ff}
+    .mode-toggle .mode-text{font-size:13px;font-weight:700;color:#ecf3ff;min-width:130px}
+    .mode-toggle.holding{background:rgba(255,180,87,.1);border-color:rgba(255,180,87,.42)}
+    .mode-toggle.holding .mode-label{color:#ffd39a}
+    .switch{position:relative;display:inline-block;width:42px;height:22px;flex:0 0 auto}
+    .switch input{opacity:0;width:0;height:0}
+    .slider{
+      position:absolute;cursor:pointer;inset:0;
+      background:#2b3f5c;border-radius:999px;transition:.18s;
+      border:1px solid rgba(255,255,255,.12);
+    }
+    .slider::before{
+      content:"";position:absolute;
+      height:16px;width:16px;left:2px;top:2px;
+      background:#ecf3ff;border-radius:50%;transition:.18s;
+    }
+    .switch input:checked + .slider{background:#ffb457;border-color:rgba(255,180,87,.6)}
+    .switch input:checked + .slider::before{transform:translateX(20px)}
+    .switch input:disabled + .slider{opacity:.5;cursor:wait}
     .ctrl,.btn{
       border:1px solid var(--stroke);
       background:var(--surface-2);
@@ -305,7 +330,17 @@ function renderConversationDashboard() {
 <body>
   <main class="app">
     <section class="top">
-      <div class="line"><span class="tag">cliente</span><h1 class="title">Seguimiento de Conversaciones</h1><span id="status" class="status">Cargando...</span></div>
+      <div class="line"><span class="tag">cliente</span><h1 class="title">Seguimiento de Conversaciones</h1>
+        <div id="mode-toggle" class="mode-toggle">
+          <span class="mode-label">Modo</span>
+          <span id="mode-text" class="mode-text">Cargando…</span>
+          <label class="switch" title="Activar mensaje provisorio">
+            <input type="checkbox" id="mode-switch" disabled />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <span id="status" class="status">Cargando...</span>
+      </div>
       <p class="sub">Visualizá cada conversación como si fuera el WhatsApp Web de la farmacia, con etiquetas claras y sin texto técnico.</p>
       <div class="line">
         <input class="ctrl" id="q-contact" placeholder="Buscar por telefono o nombre" />
@@ -750,10 +785,56 @@ function renderConversationDashboard() {
       setStatus("Mostrando solo conversaciones de pruebas");
     }
 
+    var modeToggleEl=document.getElementById("mode-toggle");
+    var modeSwitchEl=document.getElementById("mode-switch");
+    var modeTextEl=document.getElementById("mode-text");
+    function applyModeUi(mode){
+      var isHolding=mode==="holding";
+      modeSwitchEl.checked=isHolding;
+      modeTextEl.textContent=isHolding?"Mensaje provisorio":"Chatbot completo";
+      modeToggleEl.classList.toggle("holding",isHolding);
+    }
+    async function loadBotMode(){
+      try{
+        var res=await fetch("/api/bot-mode",{cache:"no-store"});
+        if(!res.ok)throw new Error("status_"+res.status);
+        var data=await res.json();
+        applyModeUi(data.mode);
+        modeSwitchEl.disabled=false;
+      }catch(err){
+        console.error("bot-mode load failed",err);
+        modeTextEl.textContent="No disponible";
+      }
+    }
+    modeSwitchEl.addEventListener("change",async function(){
+      var targetMode=modeSwitchEl.checked?"holding":"chatbot";
+      modeSwitchEl.disabled=true;
+      var previousText=modeTextEl.textContent;
+      modeTextEl.textContent="Guardando…";
+      try{
+        var res=await fetch("/api/bot-mode",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({mode:targetMode})
+        });
+        if(!res.ok)throw new Error("status_"+res.status);
+        var data=await res.json();
+        applyModeUi(data.mode);
+      }catch(err){
+        console.error("bot-mode update failed",err);
+        modeTextEl.textContent=previousText;
+        modeSwitchEl.checked=!modeSwitchEl.checked;
+        alert("No se pudo cambiar el modo del bot. Intentá de nuevo.");
+      }finally{
+        modeSwitchEl.disabled=false;
+      }
+    });
+    loadBotMode();
     loadList().catch(handleLoadError);
     window.setInterval(function(){
       if(document.hidden){return;}
       loadList().catch(handleLoadError);
+      loadBotMode();
     }, AUTO_REFRESH_MS);
   </script>
 </body>
