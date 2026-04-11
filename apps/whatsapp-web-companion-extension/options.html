@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Configurar WhatsApp Companion</title>
+  <style>
+    :root{color-scheme:dark}
+    body{margin:0;font:15px/1.45 system-ui,sans-serif;background:#07111e;color:#edf4ff}
+    .wrap{max-width:760px;margin:0 auto;padding:28px 18px 40px;display:grid;gap:18px}
+    .card{border:1px solid #233c5d;background:#0e1b30;border-radius:18px;padding:18px;display:grid;gap:14px}
+    h1{margin:0;font-size:24px}
+    p{margin:0;color:#aac0db}
+    label{display:grid;gap:8px;font-weight:600}
+    input{width:100%;border:1px solid #355b8a;background:#10233d;color:#edf4ff;border-radius:12px;padding:12px;font:inherit}
+    button{border:1px solid #3b6ca8;background:#143459;color:#edf4ff;border-radius:12px;padding:12px 16px;font:inherit;cursor:pointer}
+    button:hover{border-color:#5b93d7}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .muted{font-size:13px;color:#8fa8c7}
+    .ok{color:#88e0b3}
+    .err{color:#ffb3b3}
+    code{background:#132742;padding:2px 6px;border-radius:8px}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Configurar WhatsApp Companion</h1>
+      <p>Dejalo apuntando al backend productivo del bot o a una instancia tuya si querés probar local.</p>
+    </section>
+    <section class="card">
+      <label>
+        URL del backend
+        <input id="api-base-url" placeholder="https://whatsapp-bot-node-chatbot1.vercel.app" />
+      </label>
+      <label>
+        Token de solo lectura
+        <input id="api-token" placeholder="Opcional" />
+      </label>
+      <label>
+        Refresco automatico en segundos
+        <input id="refresh-interval" type="number" min="10" max="180" />
+      </label>
+      <div class="row">
+        <button id="save">Guardar</button>
+        <button id="test">Probar conexion</button>
+      </div>
+      <div class="muted">La extension lee <code>/api/companion/conversations</code>.</div>
+      <div id="status" class="muted"></div>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

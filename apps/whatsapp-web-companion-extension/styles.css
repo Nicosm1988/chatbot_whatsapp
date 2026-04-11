@@ -1,0 +1,70 @@
+#taligent-wa-companion-host{
+  position:fixed;
+  left:14px;
+  bottom:14px;
+  z-index:2147483647;
+}
+
+.taligent-wa-match{
+  position:relative !important;
+}
+
+.taligent-wa-highlight{
+  box-shadow:inset 0 0 0 1px rgba(88,181,255,.55);
+}
+
+.taligent-wa-dim{
+  opacity:.55;
+}
+
+.taligent-wa-focused{
+  box-shadow:inset 0 0 0 2px rgba(59,214,162,.9);
+}
+
+.taligent-wa-row-tags{
+  position:absolute;
+  right:10px;
+  bottom:6px;
+  display:flex;
+  gap:4px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  max-width:56%;
+  pointer-events:none;
+  z-index:2;
+}
+
+.taligent-wa-row-chip,
+.taligent-wa-header-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(17,30,48,.92);
+  border:1px solid rgba(89,174,255,.4);
+  color:#d7efff;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.2;
+  font-family:system-ui,sans-serif;
+  letter-spacing:.02em;
+}
+.taligent-wa-row-chip.delivery,
+.taligent-wa-header-chip.delivery{background:rgba(26,74,115,.94);border-color:rgba(90,175,255,.55);color:#d6efff}
+.taligent-wa-row-chip.mostrador,
+.taligent-wa-header-chip.mostrador{background:rgba(86,53,17,.94);border-color:rgba(255,180,87,.55);color:#ffe1b3}
+.taligent-wa-row-chip.particular,
+.taligent-wa-header-chip.particular{background:rgba(16,70,52,.94);border-color:rgba(88,214,162,.52);color:#cff8e7}
+.taligent-wa-row-chip.programa_obesidad_y_diabetes,
+.taligent-wa-header-chip.programa_obesidad_y_diabetes{background:rgba(94,26,62,.94);border-color:rgba(233,96,164,.56);color:#ffd5e9}
+.taligent-wa-row-chip.obra_social,
+.taligent-wa-header-chip.obra_social{background:rgba(43,46,110,.94);border-color:rgba(126,132,255,.56);color:#dce0ff}
+.taligent-wa-row-chip.test_run,
+.taligent-wa-header-chip.test_run{background:rgba(99,29,29,.94);border-color:rgba(255,122,122,.56);color:#ffd0d0}
+
+.taligent-wa-header-tags{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
