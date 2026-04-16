@@ -22,6 +22,7 @@ Repositorio principal del chatbot de WhatsApp para Farmacia Delko.
 - [Companion de WhatsApp Web](docs/WHATSAPP_WEB_COMPANION.md)
 - [Migracion de storage a Neon/Postgres](docs/NEON_MIGRATION.md)
 - [Productos y descuentos](docs/PRODUCTOS_Y_DESCUENTOS.md)
+- [Power BI para sistema de farmacia](docs/POWER_BI_FARMACIA.md)
 - [Memoria del proyecto](docs/PROJECT_MEMORY.md)
 - [Historial de sesion](persistence/session_history.md)
 - [Snapshot de contexto](persistence/context_snapshot.json)

@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-04-15T18:45:00-03:00",
+    "lastUpdated": "2026-04-16T12:30:00-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -12,8 +12,50 @@
         "repositoryGuide": "docs/GUIA_GITHUB_Y_REPOSITORIO.md",
         "clientRunbook": "docs/CLIENT_RUNBOOK.md",
         "neonMigrationGuide": "docs/NEON_MIGRATION.md",
+        "powerBiGuide": "docs/POWER_BI_FARMACIA.md",
         "productionUrl": "https://whatsapp-bot-node-chatbot1.vercel.app",
         "documentedNodeVersion": "22"
+    },
+    "powerBi": {
+        "enabled": true,
+        "guide": "docs/POWER_BI_FARMACIA.md",
+        "source": "plex_center_api",
+        "baseUrl": "http://delko.plex25center.com.ar:8081",
+        "apiPrefix": "/wsplexcenter",
+        "auth": "basic",
+        "notFromNeon": true,
+        "recommendedProjectFormat": {
+            "project": "pbip",
+            "report": "pbir",
+            "semanticModel": "tmdl"
+        },
+        "validatedEndpoints": [
+            "sucursales",
+            "productos",
+            "stock",
+            "laboratorios",
+            "clientes",
+            "ventas"
+        ],
+        "salesResponseCollection": "comprobantes",
+        "salesNestedCollections": [
+            "lineas",
+            "medios_de_pago",
+            "recetas"
+        ],
+        "starterModel": [
+            "DimSucursal",
+            "DimLaboratorio",
+            "DimProducto",
+            "FactStock",
+            "FactComprobantes",
+            "FactComprobanteLineas",
+            "FactMediosPago",
+            "DimCliente"
+        ],
+        "candidateProductSalesKey": "FactComprobanteLineas[idproducto] -> DimProducto[codproducto]",
+        "candidateProductSalesKeyValidatedWithLiveSample": true,
+        "windowsPathLengthRisk": true
     },
     "deployment": {
         "platform": "Vercel",

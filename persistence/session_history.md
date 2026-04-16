@@ -1,5 +1,47 @@
 # Session History Log
 
+## 2026-04-16
+
+- Added a dedicated Power BI implementation and handoff guide for the pharmacy software:
+  - `docs/POWER_BI_FARMACIA.md`
+- Locked the BI source decision explicitly:
+  - products, prices, stock and sales dashboards must read from the pharmacy API
+  - not from Neon/Postgres conversation storage
+- Confirmed the current live pharmacy API shape for BI with the configured credentials:
+  - auth type is `Basic`
+  - host documented as `http://delko.plex25center.com.ar:8081`
+  - useful validated endpoints:
+    - `sucursales`
+    - `productos`
+    - `stock`
+    - `laboratorios`
+    - `clientes`
+    - `ventas`
+- Confirmed and documented the current response structure relevant for Power BI modeling:
+  - `ventas` returns `comprobantes`
+  - `comprobantes` nests:
+    - `lineas`
+    - `medios_de_pago`
+    - `recetas`
+  - a live sample matched `lineas.idproducto` with `productos.codproducto`, so that relation is a strong candidate for the first star model
+- Documented the recommended first semantic model:
+  - `DimSucursal`
+  - `DimLaboratorio`
+  - `DimProducto`
+  - `FactStock`
+  - `FactComprobantes`
+  - `FactComprobanteLineas`
+  - `FactMediosPago`
+  - `DimCliente`
+- Documented the exact collaboration format needed so Codex can inspect and edit the BI project from the repo:
+  - `PBIP` project container
+  - `PBIR` report definition
+  - `TMDL` semantic model
+- Documented an operational caveat before the user saves the Power BI project:
+  - the current local repo path is long
+  - if Power BI hits the Windows `260`-character path limit, the repo should also be cloned in a shorter path for BI work
+- Updated the root `README.md` docs map to include the new Power BI guide
+
 ## 2026-04-15
 
 - Added a full GitHub documentation pack for repository onboarding and reinstall:

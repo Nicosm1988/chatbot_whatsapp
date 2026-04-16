@@ -1,6 +1,36 @@
 # Project Memory - WhatsApp Bot Farmacia Delko
 
-Last update: 2026-04-15
+Last update: 2026-04-16
+
+## Power BI pharmacy API guide on 2026-04-16
+- Added a dedicated Power BI handoff and modeling guide:
+  - `docs/POWER_BI_FARMACIA.md`
+- Locked the recommended BI source so future work does not drift back to the chatbot audit database:
+  - Power BI for products, prices, stock and sales must come from the pharmacy software API
+  - not from Neon/Postgres conversation storage
+- Confirmed the live BI integration shape against the existing pharmacy credentials and code path:
+  - API base host documented as `http://delko.plex25center.com.ar:8081`
+  - auth mode documented as `Basic`
+  - project integration implementation remains:
+    - `apps/whatsapp-bot-node/src/pharmacy_system_lookup.js`
+- Confirmed and documented the main endpoints currently useful for BI:
+  - `sucursales`
+  - `productos`
+  - `stock`
+  - `laboratorios`
+  - `clientes`
+  - `ventas`
+- Confirmed and documented the response-shape details needed for modeling:
+  - `ventas` currently returns `comprobantes`
+  - `comprobantes` contains nested `lineas`, `medios_de_pago` and `recetas`
+  - a live sample indicates `lineas.idproducto` matches `productos.codproducto`, but this still needs broader validation before treating it as permanently canonical
+- Documented the required Power BI project format for repo-based collaboration:
+  - container: `PBIP`
+  - report: `PBIR`
+  - semantic model: `TMDL`
+- Documented the main operational caveat for the next BI step:
+  - Windows path length can become a problem for PBIP in the current long local repo path
+  - if Power BI fails to save cleanly, use a shorter clone path for the BI working copy
 
 ## GitHub documentation pack on 2026-04-15
 - Added a proper GitHub-first documentation entrypoint at repo root:
