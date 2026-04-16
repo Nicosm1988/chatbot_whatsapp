@@ -25,6 +25,10 @@ const LOOKUP_URL_TEMPLATE = String(process.env.PHARMACY_SYSTEM_LOOKUP_URL_TEMPLA
 const API_TOKEN = String(process.env.PHARMACY_SYSTEM_API_TOKEN || "").trim();
 const API_AUTH_HEADER = String(process.env.PHARMACY_SYSTEM_API_AUTH_HEADER || "Authorization").trim();
 const API_TIMEOUT_MS = Math.max(1500, Number(process.env.PHARMACY_SYSTEM_API_TIMEOUT_MS || 6500));
+const API_FAILURE_COOLDOWN_MS = Math.max(
+  1000,
+  Number(process.env.PHARMACY_SYSTEM_API_FAILURE_COOLDOWN_MS || 20000)
+);
 const PRODUCT_SEARCH_MODE = {
   NAME: "product_name",
   DRUG: "drug"
@@ -34,6 +38,8 @@ const PLEX_DRUG_SNAPSHOT_PATH = path.join(__dirname, "plex_drug_search_snapshot.
 const stockPageCache = new Map();
 let sucursalesCache = { expiresAt: 0, items: [] };
 let plexDrugSnapshotCache = null;
+let plexApiCircuit = createApiCircuitState();
+let genericApiCircuit = createApiCircuitState();
 const PRODUCT_QUERY_STOPWORDS = new Set([
   "a",
   "al",
@@ -89,6 +95,47 @@ const DRUG_SEARCH_IGNORED_TOKENS = new Set([
   "spray",
   "ui"
 ]);
+
+function createApiCircuitState() {
+  return {
+    openUntil: 0,
+    consecutiveFailures: 0,
+    lastError: "",
+    lastFailureAt: 0
+  };
+}
+
+function isApiCircuitOpen(state) {
+  return Number(state?.openUntil || 0) > Date.now();
+}
+
+function noteApiSuccess(state) {
+  if (!state) {
+    return;
+  }
+
+  state.openUntil = 0;
+  state.consecutiveFailures = 0;
+  state.lastError = "";
+  state.lastFailureAt = 0;
+}
+
+function noteApiFailure(state, error) {
+  if (!state) {
+    return;
+  }
+
+  state.consecutiveFailures = Number(state.consecutiveFailures || 0) + 1;
+  state.lastError = String(error?.message || error || "api_failure");
+  state.lastFailureAt = Date.now();
+  state.openUntil = Date.now() + API_FAILURE_COOLDOWN_MS;
+}
+
+function createCircuitOpenError(label, state) {
+  const retryInMs = Math.max(0, Number(state?.openUntil || 0) - Date.now());
+  const reason = String(state?.lastError || "api_recent_failure");
+  return new Error(`${label}_cooldown_${reason}_retry_in_${retryInMs}`);
+}
 
 async function lookupProductAvailability({ query, productId = "", selectedProduct = null }) {
   const catalogProduct =
@@ -267,7 +314,7 @@ async function fetchPlexProductsPage(searchTerm, page) {
   url.searchParams.set("paginanro", String(page));
   url.searchParams.set("paginacant", String(PLEX_API_PRODUCTS_PER_PAGE));
 
-  const payload = await fetchJson(url.toString(), {
+  const payload = await fetchPlexJson(url.toString(), {
     Authorization: buildBasicAuthHeader(PLEX_API_USERNAME, PLEX_API_PASSWORD)
   });
   return readPlexCollection(payload, "productos");
@@ -284,7 +331,7 @@ async function searchPlexProducts({ effectiveQuery, catalogProduct }) {
     url.searchParams.set("paginanro", "1");
     url.searchParams.set("paginacant", String(PLEX_API_PRODUCTS_PER_PAGE));
 
-    const payload = await fetchJson(url.toString(), {
+    const payload = await fetchPlexJson(url.toString(), {
       Authorization: buildBasicAuthHeader(PLEX_API_USERNAME, PLEX_API_PASSWORD)
     });
     const products = readPlexCollection(payload, "productos");
@@ -760,7 +807,7 @@ async function loadPlexBranchNames() {
   }
 
   try {
-    const payload = await fetchJson(`${PLEX_API_BASE_URL}/wsplexcenter/sucursales`, {
+    const payload = await fetchPlexJson(`${PLEX_API_BASE_URL}/wsplexcenter/sucursales`, {
       Authorization: buildBasicAuthHeader(PLEX_API_USERNAME, PLEX_API_PASSWORD)
     });
     const items = readPlexCollection(payload, "sucursales");
@@ -848,7 +895,7 @@ async function fetchPlexStockPage(branchId, page) {
     url.searchParams.set("paginanro", String(page));
     url.searchParams.set("paginacant", String(PLEX_API_STOCKS_PER_PAGE));
 
-    const payload = await fetchJson(url.toString(), {
+    const payload = await fetchPlexJson(url.toString(), {
       Authorization: buildBasicAuthHeader(PLEX_API_USERNAME, PLEX_API_PASSWORD)
     });
     const response = payload?.response || {};
@@ -1002,18 +1049,7 @@ async function lookupThroughGenericApi({ effectiveQuery, productId, catalogProdu
       headers[API_AUTH_HEADER] = API_AUTH_HEADER.toLowerCase() === "authorization" ? `Bearer ${API_TOKEN}` : API_TOKEN;
     }
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error(`lookup_status_${response.status}`);
-    }
-
-    const payload = await response.json();
+    const payload = await fetchGenericLookupJson(url, headers, controller.signal);
     const candidate = extractCandidate(payload);
     if (!candidate) {
       return null;
@@ -1135,6 +1171,47 @@ function findFuzzyTokenMatch(token, candidateTokens) {
     }
     return levenshteinDistance(queryToken, current) <= 1;
   }) || null;
+}
+
+async function fetchPlexJson(url, headers = {}) {
+  if (isApiCircuitOpen(plexApiCircuit)) {
+    throw createCircuitOpenError("plex_api", plexApiCircuit);
+  }
+
+  try {
+    const payload = await fetchJson(url, headers);
+    noteApiSuccess(plexApiCircuit);
+    return payload;
+  } catch (error) {
+    noteApiFailure(plexApiCircuit, error);
+    throw error;
+  }
+}
+
+async function fetchGenericLookupJson(url, headers, signal) {
+  if (isApiCircuitOpen(genericApiCircuit)) {
+    throw createCircuitOpenError("generic_lookup", genericApiCircuit);
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+      signal,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`lookup_status_${response.status}`);
+    }
+
+    const payload = await response.json();
+    noteApiSuccess(genericApiCircuit);
+    return payload;
+  } catch (error) {
+    noteApiFailure(genericApiCircuit, error);
+    throw error;
+  }
 }
 
 function levenshteinDistance(left, right) {
@@ -1329,6 +1406,9 @@ function getPharmacyLookupStatus() {
     genericApiConfigured,
     branchIds: plexCenterConfigured ? [...PLEX_API_BRANCH_IDS] : [],
     productsPerPage: plexCenterConfigured ? PLEX_API_PRODUCTS_PER_PAGE : null,
+    failureCooldownMs: API_FAILURE_COOLDOWN_MS,
+    plexCircuitOpen: plexCenterConfigured ? isApiCircuitOpen(plexApiCircuit) : false,
+    genericCircuitOpen: genericApiConfigured ? isApiCircuitOpen(genericApiCircuit) : false,
     fallbackMode: "document"
   };
 }

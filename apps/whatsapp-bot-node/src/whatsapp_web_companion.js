@@ -8,6 +8,17 @@ function trimText(value) {
   return String(value || "").trim();
 }
 
+function extractTagIds(value) {
+  return (Array.isArray(value) ? value : [])
+    .map(tag => {
+      if (tag && typeof tag === "object") {
+        return trimText(tag.id || tag.tagId || tag.value);
+      }
+      return trimText(tag);
+    })
+    .filter(Boolean);
+}
+
 function statusLabel(status) {
   const value = trimText(status).toLowerCase();
   if (value === "closed") return "Cerrado";
@@ -41,7 +52,7 @@ function buildFilterGroups(conversations) {
         { id: "particular", label: "Particular", tags: ["particular"], count: countTag(safe, "particular") },
         {
           id: "programa_obesidad_y_diabetes",
-          label: "Programa obesidad y diabetes",
+          label: "Programa de sobrepeso y diabetes",
           tags: ["programa_obesidad_y_diabetes"],
           count: countTag(safe, "programa_obesidad_y_diabetes")
         },
@@ -61,7 +72,8 @@ function buildFilterGroups(conversations) {
 
 function buildCompanionConversation(conversation) {
   const safe = conversation && typeof conversation === "object" ? conversation : {};
-  const tags = getClientFacingConversationTags(safe.tags || []);
+  const rawTags = [...extractTagIds(safe.tags), ...extractTagIds(safe.tagIds)];
+  const tags = getClientFacingConversationTags(rawTags);
   return {
     id: trimText(safe.id),
     contactId: trimText(safe.contactId),

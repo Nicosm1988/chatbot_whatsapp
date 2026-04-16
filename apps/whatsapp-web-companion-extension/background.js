@@ -1,7 +1,7 @@
 const DEFAULT_SETTINGS = {
-  apiBaseUrl: "https://whatsapp-bot-node-chatbot1.vercel.app",
+  apiBaseUrl: "http://localhost:3000",
   apiToken: "",
-  refreshIntervalSeconds: 20
+  refreshIntervalSeconds: 5
 };
 
 function sanitizeSettings(input) {
@@ -10,7 +10,7 @@ function sanitizeSettings(input) {
     .trim()
     .replace(/\/+$/, "");
   const apiToken = String(safe.apiToken || "").trim();
-  const refreshIntervalSeconds = Math.max(10, Math.min(Number(safe.refreshIntervalSeconds || 20), 180));
+  const refreshIntervalSeconds = Math.max(3, Math.min(Number(safe.refreshIntervalSeconds || DEFAULT_SETTINGS.refreshIntervalSeconds), 180));
 
   return {
     apiBaseUrl: apiBaseUrl || DEFAULT_SETTINGS.apiBaseUrl,
@@ -31,29 +31,47 @@ async function saveSettings(nextSettings) {
 }
 
 async function fetchCompanionPayload(settings) {
-  const url = new URL("/api/companion/conversations", settings.apiBaseUrl);
-  url.searchParams.set("limit", "180");
-
-  const headers = {
-    Accept: "application/json"
-  };
-
-  if (settings.apiToken) {
-    headers.Authorization = `Bearer ${settings.apiToken}`;
+  const candidateBaseUrls = [DEFAULT_SETTINGS.apiBaseUrl];
+  if (!candidateBaseUrls.includes(settings.apiBaseUrl)) {
+    candidateBaseUrls.push(settings.apiBaseUrl);
+  }
+  if (!candidateBaseUrls.includes("https://whatsapp-bot-node-chatbot1.vercel.app")) {
+    candidateBaseUrls.push("https://whatsapp-bot-node-chatbot1.vercel.app");
   }
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    cache: "no-store",
-    headers
-  });
+  let lastError = null;
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`companion_fetch_failed:${response.status}:${detail}`);
+  for (const baseUrl of candidateBaseUrls) {
+    const url = new URL("/api/companion/conversations", baseUrl);
+    url.searchParams.set("limit", "180");
+
+    const headers = {
+      Accept: "application/json"
+    };
+
+    if (settings.apiToken) {
+      headers.Authorization = `Bearer ${settings.apiToken}`;
+    }
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        cache: "no-store",
+        headers
+      });
+
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`companion_fetch_failed:${response.status}:${detail}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return response.json();
+  throw lastError || new Error("companion_fetch_failed");
 }
 
 async function buildState() {

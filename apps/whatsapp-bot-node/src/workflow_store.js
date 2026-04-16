@@ -1,14 +1,37 @@
 const { getFlowCatalog: getDefaultFlowCatalog } = require("./flow_catalog");
+const { config, isVercelRuntime } = require("./config");
 
 const KV_REST_API_URL = String(process.env.KV_REST_API_URL || "").trim().replace(/\/+$/, "");
 const KV_REST_API_TOKEN = String(process.env.KV_REST_API_TOKEN || "").trim();
 const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
 const WORKFLOW_KV_KEY = String(process.env.WORKFLOW_KV_KEY || "wa:workflow:catalog:v1").trim();
-const WORKFLOW_CACHE_MS = Number(process.env.WORKFLOW_CACHE_MS || 2500);
+const FAST_LOCAL_WORKFLOW_CACHE =
+  config.whatsappTransport === "web" && !isVercelRuntime && process.env.NODE_ENV !== "test";
+const WORKFLOW_CACHE_MS = Number(process.env.WORKFLOW_CACHE_MS || (FAST_LOCAL_WORKFLOW_CACHE ? 60000 : 2500));
+const WORKFLOW_KV_TIMEOUT_MS = Math.max(
+  250,
+  Number(process.env.WORKFLOW_STORE_TIMEOUT_MS || (FAST_LOCAL_WORKFLOW_CACHE ? 250 : 2500))
+);
+const WORKFLOW_REMOTE_BACKOFF_MS = Math.max(
+  10000,
+  Number(process.env.WORKFLOW_REMOTE_BACKOFF_MS || (FAST_LOCAL_WORKFLOW_CACHE ? 300000 : 30000))
+);
 
 let memoryCatalog = null;
 let cachedCatalog = null;
 let cacheExpiresAt = 0;
+let remoteBackoffUntil = 0;
+
+function inRemoteBackoff() {
+  return FAST_LOCAL_WORKFLOW_CACHE && remoteBackoffUntil > Date.now();
+}
+
+function markRemoteBackoff() {
+  if (!FAST_LOCAL_WORKFLOW_CACHE) {
+    return;
+  }
+  remoteBackoffUntil = Date.now() + WORKFLOW_REMOTE_BACKOFF_MS;
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -71,12 +94,19 @@ function sanitizeCatalog(input) {
 }
 
 async function kvGetJson(key) {
+  if (inRemoteBackoff()) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WORKFLOW_KV_TIMEOUT_MS);
   try {
     const response = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
       headers: {
         Authorization: `Bearer ${KV_REST_API_TOKEN}`
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -95,21 +125,34 @@ async function kvGetJson(key) {
     return typeof data.result === "object" ? data.result : null;
   } catch (error) {
     console.warn("Workflow KV read failed:", error.message);
+    markRemoteBackoff();
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function kvSetJson(key, value) {
+  if (inRemoteBackoff()) {
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WORKFLOW_KV_TIMEOUT_MS);
   try {
     const encoded = encodeURIComponent(JSON.stringify(value));
     await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}/${encoded}`, {
       headers: {
         Authorization: `Bearer ${KV_REST_API_TOKEN}`
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: controller.signal
     });
   } catch (error) {
     console.warn("Workflow KV write failed:", error.message);
+    markRemoteBackoff();
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -125,7 +168,7 @@ async function getWorkflowCatalog() {
 
   let catalog = null;
 
-  if (KV_ENABLED) {
+  if (KV_ENABLED && !inRemoteBackoff()) {
     catalog = await kvGetJson(WORKFLOW_KV_KEY);
   } else if (memoryCatalog) {
     catalog = clone(memoryCatalog);
@@ -139,7 +182,7 @@ async function getWorkflowCatalog() {
 async function saveWorkflowCatalog(nextCatalog) {
   const normalized = sanitizeCatalog(nextCatalog);
 
-  if (KV_ENABLED) {
+  if (KV_ENABLED && !inRemoteBackoff()) {
     await kvSetJson(WORKFLOW_KV_KEY, normalized);
   } else {
     memoryCatalog = clone(normalized);
@@ -152,7 +195,7 @@ async function saveWorkflowCatalog(nextCatalog) {
 async function resetWorkflowCatalog() {
   const defaults = sanitizeCatalog(getDefaultFlowCatalog());
 
-  if (KV_ENABLED) {
+  if (KV_ENABLED && !inRemoteBackoff()) {
     await kvSetJson(WORKFLOW_KV_KEY, defaults);
   } else {
     memoryCatalog = clone(defaults);

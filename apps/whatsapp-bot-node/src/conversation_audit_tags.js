@@ -22,6 +22,14 @@ function normalizeOrderTypeTag(orderType) {
   return "";
 }
 
+function normalizeWaitingAdvisorTag(waitingAdvisor) {
+  return waitingAdvisor === true ? "esperando_asesor" : "";
+}
+
+function normalizeFinalizedTag(finalized) {
+  return finalized === true ? "finalizado" : "";
+}
+
 function formatModeLabel(mode) {
   const tag = normalizeModeTag(mode);
   return tag === "delivery" ? "Delivery" : tag === "mostrador" ? "Mostrador" : "";
@@ -31,7 +39,7 @@ function formatOrderTypeLabel(orderType) {
   const tag = normalizeOrderTypeTag(orderType);
   if (tag === "particular") return "Particular";
   if (tag === "obra_social") return "Obra social";
-  if (tag === "programa_obesidad_y_diabetes") return "Programa obesidad y diabetes";
+  if (tag === "programa_obesidad_y_diabetes") return "Programa de sobrepeso y diabetes";
   if (tag === "mostrador") return "Mostrador";
   return "";
 }
@@ -41,6 +49,33 @@ function mergeConversationContextTags(existingTags, sessionData) {
   const mode = trimText(sessionData?.mode);
   const orderType = trimText(sessionData?.orderType);
   const zone = trimText(sessionData?.zone).toLowerCase();
+  const waitingAdvisorTag = normalizeWaitingAdvisorTag(sessionData?.waitingAdvisor);
+  const finalizedTag = normalizeFinalizedTag(sessionData?.finalized);
+
+  for (const existingTag of Array.from(tags)) {
+    if (
+      existingTag === "delivery" ||
+      existingTag === "mostrador" ||
+      existingTag.startsWith("mode:")
+    ) {
+      tags.delete(existingTag);
+    }
+  }
+
+  for (const existingTag of Array.from(tags)) {
+    if (
+      existingTag === "particular" ||
+      existingTag === "programa_obesidad_y_diabetes" ||
+      existingTag === "obra_social" ||
+      existingTag === "mostrador" ||
+      existingTag.startsWith("order_type:")
+    ) {
+      tags.delete(existingTag);
+    }
+  }
+
+  tags.delete("esperando_asesor");
+  tags.delete("finalizado");
 
   if (orderType) {
     tags.add(`order_type:${orderType.toLowerCase()}`);
@@ -59,6 +94,12 @@ function mergeConversationContextTags(existingTags, sessionData) {
   }
   if (orderTypeTag) {
     tags.add(orderTypeTag);
+  }
+  if (waitingAdvisorTag) {
+    tags.add(waitingAdvisorTag);
+  }
+  if (finalizedTag) {
+    tags.add(finalizedTag);
   }
 
   return Array.from(tags).slice(0, 40);
@@ -94,6 +135,8 @@ function getClientFacingConversationTags(tags) {
     "particular",
     "programa_obesidad_y_diabetes",
     "obra_social",
+    "esperando_asesor",
+    "finalizado",
     "test_run"
   ];
   const tagSet = new Set(normalizeArray(tags).map(tag => trimText(tag)).filter(Boolean));
@@ -110,8 +153,10 @@ function formatClientFacingTagLabel(tag) {
   if (value === "delivery") return "Delivery";
   if (value === "mostrador") return "Mostrador";
   if (value === "particular") return "Particular";
-  if (value === "programa_obesidad_y_diabetes") return "Programa obesidad y diabetes";
+  if (value === "programa_obesidad_y_diabetes") return "Programa de sobrepeso y diabetes";
   if (value === "obra_social") return "Obra social";
+  if (value === "esperando_asesor") return "Esperando a ser atendido por asesor";
+  if (value === "finalizado") return "Finalizado";
   if (value === "test_run") return "Prueba";
   return "";
 }

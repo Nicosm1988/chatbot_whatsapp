@@ -79,14 +79,14 @@ function createFlowEngine(workflow) {
     return String(fallbackNodeId || fromNodeId || "").trim() || null;
   }
 
-  function executeNode({ nodeId, handlers, context }) {
+  async function executeNode({ nodeId, handlers, context }) {
     const effectiveNodeId = resolveNode(nodeId, null);
     const handler = handlers?.[effectiveNodeId] || handlers?.__default;
     if (typeof handler !== "function") {
       return { actions: [] };
     }
 
-    const result = handler({
+    const result = await handler({
       ...(context || {}),
       nodeId: effectiveNodeId,
       node: getNode(effectiveNodeId),
@@ -120,4 +120,3 @@ function createFlowEngine(workflow) {
 module.exports = {
   createFlowEngine
 };
-

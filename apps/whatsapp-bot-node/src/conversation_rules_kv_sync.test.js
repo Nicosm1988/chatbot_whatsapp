@@ -50,11 +50,15 @@ function clearConversationRuleModules() {
 test("usa el estado de KV si es mas nuevo que una sesion local vieja", async () => {
   const previousUrl = process.env.KV_REST_API_URL;
   const previousToken = process.env.KV_REST_API_TOKEN;
+  const previousHydrateGrace = process.env.LOCAL_STATE_HYDRATE_GRACE_MS;
+  const previousWebUseKvState = process.env.WHATSAPP_WEB_USE_KV_STATE;
   const previousFetch = global.fetch;
   const kv = new Map();
 
   process.env.KV_REST_API_URL = "https://kv.example";
   process.env.KV_REST_API_TOKEN = "token";
+  process.env.LOCAL_STATE_HYDRATE_GRACE_MS = "0";
+  process.env.WHATSAPP_WEB_USE_KV_STATE = "true";
   global.fetch = buildFetchStub(kv);
   clearConversationRuleModules();
 
@@ -107,6 +111,8 @@ test("usa el estado de KV si es mas nuevo que una sesion local vieja", async () 
   } finally {
     process.env.KV_REST_API_URL = previousUrl;
     process.env.KV_REST_API_TOKEN = previousToken;
+    process.env.LOCAL_STATE_HYDRATE_GRACE_MS = previousHydrateGrace;
+    process.env.WHATSAPP_WEB_USE_KV_STATE = previousWebUseKvState;
     global.fetch = previousFetch;
     clearConversationRuleModules();
   }

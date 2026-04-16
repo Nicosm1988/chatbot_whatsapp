@@ -43,6 +43,9 @@ const PANEL_STYLE = `
   .tag.programa_obesidad_y_diabetes{background:rgba(94,26,62,.94);border-color:rgba(233,96,164,.56);color:#ffd5e9}
   .tag.obra_social{background:rgba(43,46,110,.94);border-color:rgba(126,132,255,.56);color:#dce0ff}
   .tag.test_run{background:rgba(99,29,29,.94);border-color:rgba(255,122,122,.56);color:#ffd0d0}
+  .taligent-wa-row-tags,.taligent-wa-header-tags{pointer-events:none;font:600 11px/1.2 system-ui,sans-serif;letter-spacing:.01em;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .taligent-wa-row-tags{display:inline-block;margin-inline-start:6px;max-width:180px;vertical-align:middle}
+  .taligent-wa-header-tags{display:block;margin-top:6px;max-width:340px;color:#54656f}
   .empty{padding:14px 4px;color:#8ea3c0;font-size:12px;line-height:1.45}
   .error{padding:10px 12px;border-radius:12px;background:rgba(98,20,20,.42);border:1px solid rgba(255,121,121,.36);font-size:12px;color:#ffd7d7}
 `;
@@ -124,23 +127,50 @@ function getFilteredConversations() {
 
 function buildLookup(conversations) {
   const safe = Array.isArray(conversations) ? conversations : [];
-  const phones = [];
+  const latestByContactId = new Map();
   const names = new Map();
   const duplicatedNames = new Set();
 
   for (const conversation of safe) {
+    const contactId = String(conversation.contactId || conversation.id || "").trim();
+    if (!contactId) {
+      continue;
+    }
+
+    const previous = latestByContactId.get(contactId) || null;
+    const currentTime = Number(new Date(conversation.lastEventAt || 0).getTime() || 0);
+    const previousTime = Number(new Date(previous?.lastEventAt || 0).getTime() || 0);
+    if (!previous || currentTime >= previousTime) {
+      latestByContactId.set(contactId, conversation);
+    }
+  }
+
+  const phones = [];
+
+  for (const conversation of latestByContactId.values()) {
     const phone = digitsOnly(conversation.contactId);
     if (phone.length >= 8) {
       phones.push({ key: phone, conversation });
     }
+  }
 
-    const name = normalize(conversation.contactName || conversation.displayName);
-    if (name.length >= 4) {
-      if (names.has(name)) {
-        duplicatedNames.add(name);
-      } else {
-        names.set(name, conversation);
+  for (const conversation of safe) {
+    const latestConversation = latestByContactId.get(String(conversation.contactId || conversation.id || "").trim()) || conversation;
+    const aliases = [conversation.contactName, conversation.displayName, latestConversation.contactName, latestConversation.displayName];
+
+    for (const alias of aliases) {
+      const name = normalize(alias);
+      if (name.length < 4) {
+        continue;
       }
+
+      const mappedConversation = names.get(name);
+      if (mappedConversation && mappedConversation.contactId !== latestConversation.contactId) {
+        duplicatedNames.add(name);
+        continue;
+      }
+
+      names.set(name, latestConversation);
     }
   }
 
@@ -346,6 +376,32 @@ function collectChatRows() {
     .slice(0, 80);
 }
 
+function buildTagsText(conversation) {
+  return (Array.isArray(conversation?.tags) ? conversation.tags : [])
+    .map(tag => String(tag?.label || "").trim())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function findRowAnchor(row) {
+  if (!row) {
+    return null;
+  }
+
+  const icon =
+    row.querySelector("[data-icon='ic-label-filled']") ||
+    row.querySelector("[data-icon='label-stack']");
+  if (icon) {
+    return icon.closest("div.x3nfvp2") || icon.parentElement?.parentElement || icon.parentElement || null;
+  }
+
+  const titleCandidate = Array.from(
+    row.querySelectorAll("span[dir='auto'], div[dir='auto'], span[title], div[title]")
+  ).find(node => normalize(node.textContent || node.getAttribute("title") || "").length >= 3);
+
+  return titleCandidate?.parentElement || titleCandidate || null;
+}
+
 function appendRowTags(row, conversation, isMatchVisible) {
   if (!row || !conversation) {
     return;
@@ -361,32 +417,46 @@ function appendRowTags(row, conversation, isMatchVisible) {
     row.classList.add("taligent-wa-dim");
   }
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "taligent-wa-row-tags";
-  wrapper.setAttribute("data-taligent-wa-row-tags", "true");
-  wrapper.innerHTML = (conversation.tags || [])
-    .map(tag => `<span class="taligent-wa-row-chip ${esc(tagClassName(tag.id))}">${esc(tag.label)}</span>`)
-    .join("");
-  row.appendChild(wrapper);
+  const tagsText = buildTagsText(conversation);
+  if (!tagsText) {
+    return;
+  }
+
+  const anchor = findRowAnchor(row);
+  if (!anchor) {
+    return;
+  }
+  if (row.querySelector(".taligent-wa-inline-label-names, .taligent-wa-row-tags")) {
+    return;
+  }
+
+  const label = document.createElement("span");
+  label.className = "taligent-wa-row-tags";
+  label.textContent = tagsText;
+  label.title = tagsText;
+  anchor.appendChild(label);
 }
 
 function decorateHeader(lookup) {
-  const mainHeader = document.querySelector("#main header");
-  if (!mainHeader) {
+  const header = document.querySelector("#main header");
+  if (!header) {
+    return;
+  }
+  if (header.querySelector(".taligent-wa-inline-header-label-names, .taligent-wa-header-tags")) {
     return;
   }
 
-  const conversation = matchConversationFromText(mainHeader.innerText, lookup);
-  if (!conversation) {
+  const conversation = matchConversationFromText(header.innerText, lookup);
+  const tagsText = buildTagsText(conversation);
+  if (!tagsText) {
     return;
   }
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "taligent-wa-header-tags";
-  wrapper.innerHTML = (conversation.tags || [])
-    .map(tag => `<span class="taligent-wa-header-chip ${esc(tagClassName(tag.id))}">${esc(tag.label)}</span>`)
-    .join("");
-  mainHeader.appendChild(wrapper);
+  const label = document.createElement("div");
+  label.className = "taligent-wa-header-tags";
+  label.textContent = tagsText;
+  label.title = tagsText;
+  header.appendChild(label);
 }
 
 function decorateVisibleRows() {
@@ -415,6 +485,7 @@ function decorateVisibleRows() {
 function scheduleDecoration() {
   clearTimeout(state.decorateTimer);
   state.decorateTimer = setTimeout(() => decorateVisibleRows(), 180);
+  scheduleBackendRefreshSoon();
 }
 
 function ensureRoot() {
@@ -434,10 +505,17 @@ function ensureRoot() {
 
 function scheduleRefresh() {
   clearTimeout(state.refreshTimer);
-  const interval = Math.max(10, Math.min(Number(state.settings?.refreshIntervalSeconds || 20), 180)) * 1000;
+  const interval = Math.max(3, Math.min(Number(state.settings?.refreshIntervalSeconds || 5), 180)) * 1000;
   state.refreshTimer = setTimeout(() => {
     refreshPayload(false).catch(() => {});
   }, interval);
+}
+
+function scheduleBackendRefreshSoon() {
+  clearTimeout(state.refreshTimer);
+  state.refreshTimer = setTimeout(() => {
+    refreshPayload(false).catch(() => {});
+  }, 1200);
 }
 
 async function refreshPayload() {
@@ -477,13 +555,26 @@ function ensureObserver() {
 }
 
 function boot() {
-  ensureRoot();
-  ensureObserver();
-  refreshPayload().catch(error => {
-    state.loading = false;
-    state.error = `No pude iniciar el companion: ${String(error?.message || "companion_boot_failed")}`;
-    renderPanel();
-  });
+  if (!document.body) {
+    setTimeout(boot, 250);
+    return;
+  }
+
+  try {
+    ensureRoot();
+    ensureObserver();
+    refreshPayload().catch(error => {
+      state.loading = false;
+      state.error = `No pude iniciar el companion: ${String(error?.message || "companion_boot_failed")}`;
+      renderPanel();
+    });
+  } catch (error) {
+    setTimeout(boot, 500);
+  }
 }
 
-boot();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
+} else {
+  boot();
+}

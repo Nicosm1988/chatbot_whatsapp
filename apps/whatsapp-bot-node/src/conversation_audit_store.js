@@ -21,13 +21,35 @@ function resolveProvider() {
 
 const ACTIVE_PROVIDER = resolveProvider();
 const activeStore = ACTIVE_PROVIDER === "postgres" ? postgresStore : kvStore;
+const fallbackStore = ACTIVE_PROVIDER === "postgres" ? kvStore : null;
 
-function callStore(methodName, args) {
+function isAuditStorageUnavailableError(error) {
+  return (
+    error?.code === "audit_storage_unavailable" ||
+    String(error?.message || "").includes("audit_storage_unavailable")
+  );
+}
+
+async function callStore(methodName, args) {
   const method = activeStore[methodName];
   if (typeof method !== "function") {
     throw new Error(`audit_store_method_missing:${methodName}`);
   }
-  return method(...args);
+
+  try {
+    return await method(...args);
+  } catch (error) {
+    if (!fallbackStore || !isAuditStorageUnavailableError(error)) {
+      throw error;
+    }
+
+    const fallbackMethod = fallbackStore[methodName];
+    if (typeof fallbackMethod !== "function") {
+      throw error;
+    }
+
+    return fallbackMethod(...args);
+  }
 }
 
 function decorateStatus(base) {
@@ -40,7 +62,25 @@ function decorateStatus(base) {
 }
 
 function getAuditStorageStatus() {
-  return decorateStatus(callStore("getAuditStorageStatus", []));
+  const activeStatus =
+    typeof activeStore.getAuditStorageStatus === "function"
+      ? activeStore.getAuditStorageStatus()
+      : {};
+  const fallbackStatus =
+    fallbackStore && typeof fallbackStore.getAuditStorageStatus === "function"
+      ? fallbackStore.getAuditStorageStatus()
+      : null;
+
+  const activeUnavailable =
+    ACTIVE_PROVIDER === "postgres" &&
+    Boolean(activeStatus?.warnings?.lastDbReadError || activeStatus?.warnings?.lastDbWriteError);
+
+  return decorateStatus({
+    ...activeStatus,
+    fallbackProvider: fallbackStore ? "kv" : null,
+    fallbackStatus,
+    degraded: Boolean(fallbackStore && activeUnavailable)
+  });
 }
 
 function recordInboundMessage(payload) {
@@ -67,6 +107,10 @@ function getConversationSummary() {
   return callStore("getConversationSummary", []);
 }
 
+function addConversationTag(conversationId, tag) {
+  return callStore("addConversationTag", [conversationId, tag]);
+}
+
 module.exports = {
   recordInboundMessage,
   recordFlowTransition,
@@ -74,5 +118,6 @@ module.exports = {
   listConversations,
   getConversationDetail,
   getConversationSummary,
-  getAuditStorageStatus
+  getAuditStorageStatus,
+  addConversationTag
 };

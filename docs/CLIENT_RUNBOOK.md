@@ -1,42 +1,118 @@
 # Client Runbook - Farmacia Delko
 
-Last update: 2026-03-08
+Last update: 2026-04-15
 
-## 1) Daily use URLs
+## 1) URLs de uso diario
+
 - Control center: `/`
-- Editable flow studio: `/flows`
-- Client flow map: `/flows/client`
-- Conversation history: `/conversations`
+- Editor de flujos: `/flows`
+- Conversaciones: `/conversations`
+- Estado de WhatsApp Web: `/whatsapp-qr`
+- Readiness: `/api/system/ready`
+- Liveness operativo: `/api/system/liveness`
+- Storage: `/api/system/storage`
 
-## 2) Operator workflow
-1. Open `/`.
-2. Use **Editor de Flujos (n8n)** to adjust nodes/paths/messages.
-3. Click `Guardar` in editor.
-4. Validate with a controlled WhatsApp test run.
-5. Check `/conversations?tag=test_run` for traceability.
+Nota:
+- `/flows/client` existe pero hoy redirige a `/flows`.
 
-## 3) Mandatory environment variables
+## 2) Flujo operativo recomendado
+
+1. Abrir `/`.
+2. Si hay cambios en el flujo, entrar a `/flows`.
+3. Editar y guardar.
+4. Validar con un chat de prueba.
+5. Revisar `/conversations`.
+6. Verificar `/api/system/ready` y `/api/system/liveness`.
+
+## 3) Variables minimas para el modo web actual
+
+- `WHATSAPP_TRANSPORT=web`
+- `WHATSAPP_WEB_AUTH_MODE=connected_browser`
+- `WHATSAPP_WEB_BROWSER_URL=http://127.0.0.1:9222`
+- `BUSINESS_DISPLAY_NAME=Farmacia Delko`
+- `DATABASE_URL`
+- `AUDIT_STORAGE_PROVIDER=postgres`
+- `AUDIT_ALLOW_MEMORY_FALLBACK=false`
+- `PHARMACY_SYSTEM_API_BASE_URL`
+- `PHARMACY_SYSTEM_API_USERNAME`
+- `PHARMACY_SYSTEM_API_PASSWORD`
+
+Variables opcionales utiles:
+
+- `WHATSAPP_WEB_SESSION_NAME`
+- `WHATSAPP_WEB_AUTH_DATA_PATH`
+- `WHATSAPP_WEB_EXECUTABLE_PATH`
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+- `CRON_SECRET`
+
+## 4) Inicio recomendado en modo web
+
+Desde `apps/whatsapp-bot-node`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start_whatsapp_remote_browser.ps1
+npm run dev
+```
+
+Despues:
+
+1. Abrir `http://localhost:3000/whatsapp-qr`
+2. Confirmar que la sesion quede autenticada
+3. Verificar `http://localhost:3000/api/system/ready`
+
+## 5) Inicio simple para operadores no tecnicos
+
+Desde `apps/whatsapp-bot-node`:
+
+```powershell
+npm run lab:start-silent
+npm run lab:install-shortcut
+npm run lab:install-startup
+```
+
+Comportamiento:
+
+- si la tarea programada no puede instalarse, se crea un acceso directo en la carpeta `Inicio`
+- el watchdog deja el bot corriendo en segundo plano
+
+## 6) Variables solo para modo cloud
+
 - `WHATSAPP_ACCESS_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - `WHATSAPP_APP_SECRET`
-- `BUSINESS_DISPLAY_NAME=Farmacia Delko`
-- `DATABASE_URL` (Neon/Postgres principal)
-- `AUDIT_STORAGE_PROVIDER=postgres`
-- `KV_REST_API_URL` (for persistent audit)
-- `KV_REST_API_TOKEN` (for persistent audit)
-- `AUDIT_ALLOW_MEMORY_FALLBACK=false` (en produccion)
+- `WHATSAPP_ENFORCE_SIGNATURE=true`
+- `WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `WEBHOOK_BASE_URL`
 
-## 4) Production checks before client handoff
-1. `/health` returns 200.
-2. Send test text, interactive click, image/PDF and confirm logs in `/conversations`.
-3. Confirm no client page displays JSON or internal IDs.
-4. Confirm editor can drag nodes, connect nodes, remove/restore edges, zoom and fit.
-5. Confirm flow edits affect runtime chatbot behavior.
+## 7) Checks antes de entregar o reiniciar operacion
 
-## 5) Incident quick actions
-- If webhook fails signature: check `WHATSAPP_APP_SECRET` mismatch.
-- If messages fail send: validate recipient format and Meta test recipient whitelist.
-- If history not persistent: verify Upstash KV env vars.
-- If API returns `audit_storage_unavailable`: storage persistente no configurado o inaccesible.
-- If flow map seems stale: open `/flows`, save once, refresh `/flows/client`.
+1. `/health` responde `200`.
+2. `/api/system/ready` responde `ok: true`.
+3. `/api/system/liveness` responde `ok: true` cuando la sesion ya esta lista.
+4. En modo `web`, confirmar `transport=web`, `authenticated=true` y `sessionReady=true`.
+5. En modo `cloud`, confirmar endurecimiento de firma webhook.
+6. Confirmar que no se vea JSON ni IDs internos en pantallas cliente.
+7. Confirmar que el editor guarda y el bot refleja el cambio.
+
+## 8) Acciones rapidas ante incidentes
+
+- Si `web` no responde:
+  - correr `npm run lab:restart`
+  - revisar `http://localhost:3000/whatsapp-qr`
+- Si el navegador remoto se cerro:
+  - volver a correr `scripts/start_whatsapp_remote_browser.ps1`
+- Si el watchdog debe quedar activo:
+  - correr `npm run lab:watch`
+- Si necesitas una validacion guiada:
+  - correr `npm run lab:validate`
+- Si el storage no persiste:
+  - revisar `DATABASE_URL`
+  - revisar `/api/system/storage`
+- Si falla el cron:
+  - revisar `CRON_SECRET`
+- Si falla Cloud API:
+  - revisar `WHATSAPP_APP_SECRET`
+  - revisar `WHATSAPP_ACCESS_TOKEN`
+  - revisar `WHATSAPP_PHONE_NUMBER_ID`

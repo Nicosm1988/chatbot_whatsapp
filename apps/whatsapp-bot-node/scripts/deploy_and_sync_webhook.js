@@ -18,10 +18,11 @@ const whatsappPhoneNumberId = readEnv("WHATSAPP_PHONE_NUMBER_ID");
 const whatsappWebhookVerifyToken = readEnv("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
 const whatsappBusinessAccountId = readEnv("WHATSAPP_BUSINESS_ACCOUNT_ID");
 const baseUrl = resolveBaseUrl();
+const deployCwd = resolveDeployCwd();
 
 async function main() {
-  console.log("1) Deploying to Vercel production...");
-  runCommand("npx", ["vercel", "--prod", "--yes"]);
+  console.log(`1) Deploying to Vercel production from ${deployCwd} ...`);
+  runCommand("npx", ["vercel", "--prod", "--yes"], { cwd: deployCwd });
 
   console.log(`2) Checking service health at ${baseUrl}/health ...`);
   const health = await axios.get(`${baseUrl}/health`, { timeout: 15000 });
@@ -135,18 +136,19 @@ function resolveBaseUrl() {
   return `https://${projectName}.vercel.app`;
 }
 
-function runCommand(command, args) {
+function runCommand(command, args, options = {}) {
+  const commandCwd = options.cwd || rootDir;
   let result;
 
   if (process.platform === "win32") {
     const escaped = [command, ...args].map(escapeWindowsArgument).join(" ");
     result = spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", escaped], {
-      cwd: rootDir,
+      cwd: commandCwd,
       stdio: "inherit"
     });
   } else {
     result = spawnSync(command, args, {
-      cwd: rootDir,
+      cwd: commandCwd,
       stdio: "inherit"
     });
   }
@@ -162,6 +164,17 @@ function escapeWindowsArgument(value) {
     return stringValue;
   }
   return `"${stringValue.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1")}"`;
+}
+
+function resolveDeployCwd() {
+  const monorepoRoot = path.resolve(rootDir, "..", "..");
+  const monorepoAppPath = path.join(monorepoRoot, "apps", "whatsapp-bot-node");
+
+  if (path.normalize(monorepoAppPath) === path.normalize(rootDir) && fs.existsSync(monorepoRoot)) {
+    return monorepoRoot;
+  }
+
+  return rootDir;
 }
 
 main().catch(error => {

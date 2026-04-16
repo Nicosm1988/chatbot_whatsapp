@@ -1,6 +1,10 @@
 node_modules/
 .env
+.env.*
+!.env.example
 npm-debug.log*
 .vercel/*
 !.vercel/project.json
 .env*.local
+.wwebjs_auth/
+.wwebjs_cache/

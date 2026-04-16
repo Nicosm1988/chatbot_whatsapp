@@ -11,7 +11,7 @@ Extensión Chromium/Edge para superponer etiquetas y filtros operativos del bot 
   - Delivery
   - Mostrador
   - Particular
-  - Programa obesidad y diabetes
+  - Programa de sobrepeso y diabetes
   - Obra social
   - Pruebas
 

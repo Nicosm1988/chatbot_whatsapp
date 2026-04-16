@@ -1,68 +1,581 @@
 {
-  "project": "WhatsApp Bot Farmacia Delko",
-  "lastUpdated": "2026-03-08T00:00:00-03:00",
-  "deployment": {
-    "platform": "Vercel",
-    "status": "active",
-    "surfaces": {
-      "controlCenter": "/",
-      "flowEditor": "/flows",
-      "flowClient": "/flows/client",
-      "conversations": "/conversations"
+    "project": "WhatsApp Bot Farmacia Delko",
+    "lastUpdated": "2026-04-15T18:45:00-03:00",
+    "documentation": {
+        "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
+        "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
+        "zipDownloadUrl": "https://github.com/Nicosm1988/chatbot_whatsapp/archive/refs/heads/main.zip",
+        "actionsUrl": "https://github.com/Nicosm1988/chatbot_whatsapp/actions",
+        "commitsUrl": "https://github.com/Nicosm1988/chatbot_whatsapp/commits/main",
+        "rootReadme": "README.md",
+        "installGuide": "docs/INSTALACION_EN_OTRA_MAQUINA.md",
+        "repositoryGuide": "docs/GUIA_GITHUB_Y_REPOSITORIO.md",
+        "clientRunbook": "docs/CLIENT_RUNBOOK.md",
+        "neonMigrationGuide": "docs/NEON_MIGRATION.md",
+        "productionUrl": "https://whatsapp-bot-node-chatbot1.vercel.app",
+        "documentedNodeVersion": "22"
     },
-    "controlCenterNavigation": {
-      "showsFlowClientMap": false
+    "deployment": {
+        "platform": "Vercel",
+        "status": "active",
+        "baseUrl": "https://whatsapp-bot-node-chatbot1.vercel.app",
+        "lastManualProductionDeployAt": "2026-04-14T00:18:00-03:00",
+        "runtimeReadinessEndpoint": "/api/system/ready",
+        "liveValidationStatus": "validated_iteratively",
+        "surfaces": {
+            "controlCenter": "/",
+            "flowEditor": "/flows",
+            "flowClient": "/flows/client",
+            "conversations": "/conversations",
+            "companionApi": "/api/companion/conversations"
+        },
+        "controlCenterNavigation": {
+            "showsFlowClientMap": false
+        },
+        "whatsappWebCompanionExtensionPath": "apps/whatsapp-web-companion-extension",
+        "recoveryStatus": {
+            "runtimeModulesRecoveredFromStash": true,
+            "deployScriptMonorepoPathFix": true,
+            "productionRecoveredAfterRedeploy": true,
+            "productionHealthHttp": 200,
+            "productionReadyHttp": 200,
+            "productionConversationsHttp": 200,
+            "productionCompanionHttp": 200
+        },
+        "transportModes": {
+            "supported": [
+                "cloud",
+                "web"
+            ],
+            "currentLocalValidationMode": "web",
+            "webUsesLetterTextFallbacks": true,
+            "githubInactivityCronSafeSkipOnAuditStorageUnavailable": true,
+            "githubInactivityWorkflowLastManualSuccessRun": "24379311149",
+            "webBootstrapStatus": {
+                "libraryPinned": "1.32.0",
+                "localExpressBoots": true,
+                "authDataPath": "C:\\Users\\Taligent\\AppData\\Local\\DelkoBot\\wwebjs-auth",
+                "browserDatabaseIssueResolved": true,
+                "currentSessionName": "farmacia-prueba-3",
+                "preferredAuthMode": "connected_browser",
+                "connectedBrowserUrl": "http://127.0.0.1:9222",
+                "connectedBrowserLauncherScript": "apps/whatsapp-bot-node/scripts/start_whatsapp_remote_browser.ps1",
+                "connectedBrowserRestartScript": "apps/whatsapp-bot-node/scripts/restart_whatsapp_lab.ps1",
+                "connectedBrowserWatchdogScript": "apps/whatsapp-bot-node/scripts/run_whatsapp_bot_forever.ps1",
+                "connectedBrowserStartupInstallerScript": "apps/whatsapp-bot-node/scripts/install_whatsapp_bot_startup.ps1",
+                "qrSurface": "http://localhost:3000/whatsapp-qr",
+                "duplicateWhatsAppPageConflictResolved": true,
+                "appRootEnvLoadingFixed": true,
+                "authModeVisibleInReadiness": true,
+                "connectedSocketStateAcceptedAsStable": true,
+                "closingRemoteTabBreaksAutomation": true,
+                "webStoreInboundPollerEnabled": true,
+                "webStoreHealthyBackupPollEnabled": true,
+                "webRecoveryLatestUnreadPerLogicalChatOnReconnect": true,
+                "webRecoveryHistoricPendingMessageAllowed": true,
+                "webRecoveryLookbackSecondsDefault": 259200,
+                "webLidIdentityNormalization": true,
+                "manualPostSyncFallbackEnabled": true,
+                "partialListenerCompatibilityTolerated": true,
+                "webSendSeenDisabled": true,
+                "localFastPathPrewarmed": true,
+                "localFastAuditDetached": true,
+                "localPlexCredentialsLoaded": true,
+                "localPlexLiveConnectionValidated": true,
+                "localPlexSelectedBranchIds": [
+                    "1"
+                ],
+                "plexFailureCooldownEnabled": true,
+                "localDevDiagnosticsEndpoints": [
+                    "/api/dev/whatsapp/send-test",
+                    "/api/dev/whatsapp/backfill-unread",
+                    "/api/dev/whatsapp/simulate-inbound",
+                    "/api/dev/whatsapp/reset-contact-state"
+                ],
+                "sessionReady": true,
+                "sessionAuthenticated": true,
+                "lastValidatedOutboundRecipient": "199303830229137@lid",
+                "lastValidatedConversationAdvance": "menu_to_delivery_service_type",
+                "latencyProfileMs": {
+                    "coldTurnApprox": 657,
+                    "warmTurnApproxMin": 18,
+                    "warmTurnApproxMax": 52,
+                    "directOutboundApprox": 324
+                },
+                "startupBacklogReplaySuppressed": true,
+                "startupBacklogReplayUsesFixedBootWatermark": true,
+                "startupBacklogNowPreservesLatestUnreadPendingMessage": true,
+                "nearSimultaneousDuplicateInboundSuppressed": true,
+                "pendingManualStep": "",
+                "menuResumeUsesRealFlow": true,
+                "menuResumeFirstLetterValidatedByTests": true,
+                "postSummaryMenuResumesCleanly": true,
+                "agentLoopSpamSuppressed": true,
+                "runtimeResetGenerationInvalidationFixed": true,
+                "runtimeResetIntentCatalogAligned": true,
+                "remoteBrowserAutoLoadsCompanionExtension": true,
+                "companionDefaultsLocalBackendFirst": true,
+                "companionFastRefreshSeconds": 5,
+                "directInlineOverlayInjectionEnabled": false,
+                "directInlineOverlayValidated": false,
+                "directInlineOverlayRowTagsCountValidated": 0,
+                "inlineNativeLabelNamesEnabled": true,
+                "inlineNativeLabelNamesValidated": true,
+                "inlineNativeLabelNamesClickSafeValidated": true,
+                "inlineNativeLabelNamesVisibleInHeaderAndRow": true,
+                "inlineNativeLabelNamesSeparator": " | ",
+                "runtimePageHealthTracked": true,
+                "runtimeReadyDropsWhenBrowserPageCloses": true,
+                "restartDoesNotSpawnNestedPowerShellWindow": true,
+                "contextualPromptFingerprintDeduplication": true,
+                "coarseCrossPromptDuplicateSuppression": true,
+                "advisorClosureDetectionEnabled": true,
+                "advisorClosureAutoFarewellEnabled": true,
+                "advisorClosureLiveRetestPendingAfterQr": false,
+                "installedMarketSkills": [
+                    "playwright-interactive"
+                ],
+                "localReadyIncludesPlexLookup": true,
+                "localLiveLookupValidationSample": {
+                    "query": "Actron 600",
+                    "resolvedTitle": "ACTRON 600 RAPIDA ACCION caps.gelat.blanda x 10",
+                    "stockNote": "Stock: 6 cajas."
+                },
+                "nativeLabelCatalogBootstrapped": true,
+                "startupWatchdogShortcutInstalled": true,
+                "desktopSilentLauncherInstalled": true,
+                "exclusiveOperationalTags": true,
+                "groupedFallbackSections": [
+                    "Opciones",
+                    "Productos",
+                    "Ayuda"
+                ],
+                "groupedProductRowsBold": true,
+                "advisorWaitingNativeLabel": "Esperando a ser atendido por asesor",
+                "finalizedNativeLabel": "Finalizado",
+                "managedNativeLabels": [
+                    "Delivery",
+                    "Mostrador",
+                    "Particular",
+                    "Programa de sobrepeso y diabetes",
+                    "Obra social",
+                    "Prueba",
+                    "Esperando a ser atendido por asesor",
+                    "Finalizado"
+                ],
+                "silentLauncherScript": "apps/whatsapp-bot-node/scripts/start_whatsapp_bot_silent.ps1",
+                "desktopShortcutInstallerScript": "apps/whatsapp-bot-node/scripts/install_whatsapp_bot_desktop_shortcut.ps1",
+                "desktopShortcutInstalledLocal": true,
+                "startupFolderFallbackInstalledLocal": true,
+                "watchdogRunningHiddenLocal": true,
+                "scheduledTaskInstalledLocal": false,
+                "scheduledTaskFallbackReason": "access_denied",
+                "fullAutomatedSuitePassing": 114,
+                "runtimeConcurrencySuitePassing": true,
+                "operationalLivenessEndpointEnabled": true,
+                "watchdogUsesOperationalLiveness": true,
+                "outboundRecipientAttemptTimeoutMs": 3500,
+                "recipientFallbackAcrossContactVariants": true,
+                "duplicateAppNodeProcessCollapseEnabled": true,
+                "canonicalInboundQueueKeyUsesBareId": true,
+                "runtimeResetClearsAllContactVariants": true,
+                "mixedVariantBacklogPruning": true,
+                "sameSecondMenuFollowupAccepted": true,
+                "advisorClosureLiveSimulationValidated": true,
+                "leftChatListInlineNamesValidatedForNico2": true,
+                "postCheckoutPatienceHoldEnabled": true,
+                "manualAdvisorInterventionSuspendsBot": true,
+                "finalizedConversationResumesBotOnNextCustomerMessage": true,
+                "manualAdvisorInterventionAcrossContactVariants": true,
+                "customerRepliesStaySilentDuringManualAdvisorConversation": true,
+                "advisorClosureKeywordsTriggerFarewellAndFinalizedLabel": true,
+                "webTransportFallbackOutboundIdEnabled": true,
+                "silentLauncherRestoresOperationalBrowserWindow": true,
+                "connectedBrowserLaunchesVisible": true,
+                "connectedBrowserAntiBackgroundThrottlingFlags": [
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-background-timer-throttling",
+                    "--disable-features=CalculateNativeWinOcclusion"
+                ],
+                "desktopShortcutDoubleClickRecoversBrowser": true,
+                "leftChatListInlineNamesRevalidatedAfterLauncherFix": true,
+                "staleObservedPageCloseNoLongerKillsHealthyRuntime": true,
+                "connectedBrowserRecoveryUsesLiveBrowserPages": true,
+                "connectedBrowserReconnectViaPuppeteerEnabled": true
+            }
+        }
+    },
+    "ui": {
+        "theme": "dark",
+        "clientBoard": "friendly_non_technical",
+        "jsonVisibleToClient": false
+    },
+    "flowCapabilities": {
+        "dragNodes": true,
+        "connectNodes": true,
+        "deleteEdges": true,
+        "restoreEdges": true,
+        "zoom": true,
+        "fitToScreen": true,
+        "nodeExplainSimple": true,
+        "nodeMessageEditable": true,
+        "inactivityTimeout": true,
+        "inactivityPromptMinutes": 15,
+        "inactivityAutoCloseMinutes": 15,
+        "inactivityCronSchedule": "*/5 * * * *",
+        "inactivityScheduler": "github_actions",
+        "guidedProductSelection": true,
+        "deliveryCounterStart": true,
+        "serviceTypeBranch": true,
+        "counterDirectRecipeUpload": true,
+        "guidedBackNavigation": true,
+        "flatPresentationOptions": true,
+        "menuResumeWithoutGreeting": true,
+        "stockPriceLookupAdapter": true,
+        "documentaryDiscountExamples": true,
+        "professionalObraSocialHandoff": true,
+        "singleInteractivePromptPerStep": true,
+        "backInsideSameOptionsSet": true,
+        "linguisticQaSkill": "skills/whatsapp-chatbot-linguistic",
+        "interactiveMenuStyle": "cloud_interactive_or_web_numbered_text_fallback",
+        "serverlessStateHydration": "kv_newer_wins",
+        "singleCardLookupOutcomes": true,
+        "particularProductOptionList": true,
+        "particularNoAutoSelect": true,
+        "particularAdvisorFallbackOption": true,
+        "liveStockBranches": [
+            "1"
+        ],
+        "multiItemCart": true,
+        "finalRecetarioAfterCart": true,
+        "deliveryProfileCapture": true,
+        "deliverySingleMessageCapture": true,
+        "deliveryAddressReuseByPhone": true,
+        "finalCheckoutSummary": true,
+        "outboundCopySanitization": true,
+        "customerUnicodePreservedInSummary": true,
+        "genericApiProductDiscounts": true,
+        "advisorOperationalSummaryDetail": true,
+        "genericSearchTypoTolerance": true,
+        "particularSearchModeChoice": true,
+        "particularDrugSearchEnabled": true,
+        "particularDrugSnapshotIndex": true,
+        "safeCurrencyFormatting": true,
+        "deliveryTwoStepCapture": true,
+        "deliveryFreeFormFriendly": true,
+        "deliveryIncrementalMissingFieldRecovery": true,
+        "recipeStepInsistence": true,
+        "recentProductReorderHistory": true,
+        "sameDrugAlternativesStructure": true,
+        "stockPendingShownAsOrderOnRequest": true,
+        "conversationFriendlyAuditTags": true,
+        "conversationModeCategoryFilters": true,
+        "branchLabelVisibleInChat": true,
+        "conversationDashboardAutoRefreshMs": 12000,
+        "conversationDashboardRenderValidated": true,
+        "historicalConversationTagInference": true,
+        "conversationDashboardProminentTagPlacement": "above_customer_name",
+        "conversationDashboardTagColorCoding": true,
+        "conversationDashboardWhatsAppLikeTranscript": true,
+        "conversationDashboardTechnicalEventLabelsHidden": true,
+        "conversationDashboardInteractiveOptionsRenderedAsChatCards": true,
+        "whatsappWebCompanionExtension": true,
+        "whatsappWebOverlayFilters": true,
+        "whatsappWebOverlayChips": true,
+        "whatsappWebOverlayTagColorCoding": true,
+        "webLetterReplyParsing": true,
+        "webTextFallbackMenus": true,
+        "webPromptInstructionBold": true,
+        "webBackToHomeOption": true,
+        "webHomeTargetMenu": "delivery_mostrador_root",
+        "guidedBackLabel": "Volver al menú anterior",
+        "webRetryResendsMenu": true,
+        "olderAdultCopyBias": true,
+        "exclusiveOperationalPathTags": true,
+        "groupedParticularFallbackSections": true,
+        "groupedProductChoicesBold": true,
+        "advisorWaitingNativeLabel": true,
+        "postCheckoutAdvisorPatienceHold": true,
+        "manualAdvisorTakeoverStopsAutoreplies": true,
+        "advisorClosureRestartsAutomationForReturningCustomer": true,
+        "treatmentSummaryAllowsAddMore": false,
+        "visibleGuidedRestartChoice": false,
+        "particularRealCustomerPathHandsToAdvisor": true
+    },
+    "audit": {
+        "conversationTimeline": true,
+        "testTag": "test_run",
+        "storage": "neon_postgres_primary_with_kv_legacy",
+        "friendlyConversationLabels": true,
+        "vacunasAuditLabel": "programa_obesidad_y_diabetes",
+        "clientFacingTagFilters": [
+            "delivery",
+            "mostrador",
+            "particular",
+            "programa_obesidad_y_diabetes",
+            "obra_social",
+            "test_run",
+            "esperando_asesor"
+        ],
+        "multiTagFiltering": "comma_separated_and",
+        "conversationDashboardFiltersValidatedInProduction": true,
+        "interactiveListSerialization": "preserved_in_audit_detail",
+        "companionEndpoint": "/api/companion/conversations",
+        "nativeWhatsAppInboxLabelsAutomated": true,
+        "historicalTagsRecoveredFromFlowTransitions": true,
+        "vercelBoardActsAsWhatsAppSimulation": true,
+        "connectivityHardening": {
+            "kvTimeoutMsDefault": 3500,
+            "kvRetriesDefault": 1,
+            "frontendApiTimeoutMs": 9000
+        },
+        "productionRequirement": {
+            "persistentDbRequired": true,
+            "memoryFallbackAllowedInProduction": false
+        },
+        "providerRouting": {
+            "env": "AUDIT_STORAGE_PROVIDER",
+            "supported": [
+                "postgres",
+                "kv",
+                "auto"
+            ]
+        },
+        "nativeWhatsAppManagedLabels": [
+            "Delivery",
+            "Mostrador",
+            "Particular",
+            "Programa de sobrepeso y diabetes",
+            "Obra social",
+            "Prueba",
+            "Esperando a ser atendido por asesor",
+            "Finalizado"
+        ]
+    },
+    "security": {
+        "webhookSignature": {
+            "implementation": "apps/whatsapp-bot-node/src/webhook_security.js",
+            "deployed": true,
+            "runtimeEndpoint": "/api/system/ready",
+            "enforcementReady": true,
+            "productionMode": "not_configured",
+            "productionSecure": false,
+            "remainingBlocker": "missing_whatsapp_app_secret",
+            "requiredEnv": [
+                "WHATSAPP_APP_SECRET",
+                "WHATSAPP_ENFORCE_SIGNATURE=true"
+            ]
+        }
+    },
+    "business": {
+        "displayName": "Farmacia Delko"
+    },
+    "temporaryCatalog": {
+        "officialDoc": "docs/PRODUCTOS_Y_DESCUENTOS.md",
+        "sourceFile": "Productos y Descuentos.docx",
+        "runtimeModule": "apps/whatsapp-bot-node/src/product_discount_catalog.js",
+        "apiPending": false,
+        "apiProvider": "plex_center_basic_auth",
+        "apiBasePath": "/wsplexcenter",
+        "apiPrimaryWhenConfigured": true,
+        "apiProductionReady": true,
+        "apiFallbackDocument": true,
+        "drugEndpointAvailable": true,
+        "drugSearchSnapshotFile": "apps/whatsapp-bot-node/src/plex_drug_search_snapshot.json",
+        "drugSearchRefreshScript": "apps/whatsapp-bot-node/scripts/generate_plex_drug_snapshot.js",
+        "drugSnapshotStats": {
+            "drugs": 3893,
+            "products": 44345,
+            "groups": 2166
+        },
+        "stockPaginationIssueObserved": true,
+        "stockPaginationMode": "paginanro_paginacant",
+        "stockPaginationRepeatIssueResolved": true,
+        "stockLatePage403Observed": true,
+        "stockUnknownWhenPageRepeats": false,
+        "apiBranchIds": [
+            "1"
+        ],
+        "visibleBranchScope": "delko_1_only",
+        "customerFacingDiscountBlock": true,
+        "livePricingScenariosFromApiPrice": true,
+        "genericApiProductsUseParticularPricing": true,
+        "stockUnconfirmedCustomerCopy": "a_pedido",
+        "apiPriceValidationCustomerCopyVisible": false,
+        "customerFacingCopySanitized": true,
+        "customerFacingCurrencyPlainAsciiSpacing": true,
+        "customerUnicodePreservedInSummary": true,
+        "finalRecetarioAfterCart": true,
+        "finalSummaryIncludesPerProductPricingBreakdown": true,
+        "advisorHandoffSummaryDetailed": true,
+        "particularSimilarityConfirmation": true,
+        "particularSimilarityActions": [
+            "si",
+            "no",
+            "volver_a_escribir"
+        ],
+        "liveStockValidationCases": {
+            "confirmedAvailable": true,
+            "confirmedUnavailable": true,
+            "confirmedAfterUpdatedPaginationDoc": true,
+            "remainingExternalHighPageFailure": true
+        },
+        "visibleGuidedLabel": "Programa de sobrepeso y diabetes",
+        "serviceProgramListTitle": "Programa de sobrepeso y diabetes",
+        "serviceProgramListDescription": "",
+        "serviceProgramChatLabel": "Programa de sobrepeso y diabetes",
+        "guidedPath": [
+            "delivery_o_mostrador",
+            "tipo_atencion",
+            "lookup_stock_precio",
+            "revision_item",
+            "terminar_o_volver_menu_anterior",
+            "recetario_solidario_final",
+            "resumen_confirmacion"
+        ],
+        "counterFlow": [
+            "receta_upload",
+            "insist_recipe_if_text",
+            "handoff_mostrador"
+        ],
+        "obraSocialFlow": [
+            "receta_upload",
+            "insist_recipe_if_text",
+            "handoff_asesor"
+        ],
+        "treatmentFlow": [
+            "laboratorio",
+            "marca",
+            "presentacion",
+            "lookup_stock_precio",
+            "revision_item",
+            "carrito_multi_item",
+            "recetario_solidario_final",
+            "resumen_confirmacion"
+        ],
+        "particularFlow": [
+            "historial_recompra_opcional",
+            "modo_busqueda_particular",
+            "texto_libre_producto",
+            "opciones_sistema",
+            "seleccion_manual",
+            "lookup_stock_precio",
+            "revision_item",
+            "carrito_multi_item",
+            "recetario_solidario_final",
+            "resumen_checkout"
+        ],
+        "cartFlow": [
+            "sumar_producto",
+            "agregar_mas_o_terminar",
+            "recetario_solidario_final",
+            "captura_delivery_si_corresponde",
+            "resumen_final",
+            "handoff_asesor"
+        ],
+        "deliveryProfileStoredByContact": true,
+        "deliveryProfileFields": [
+            "firstName",
+            "lastName",
+            "email",
+            "addressLine",
+            "crossStreets",
+            "neighborhood"
+        ],
+        "deliverySavedAddressPrompt": true,
+        "deliverySingleMessageCapture": false,
+        "deliveryTwoStepCapture": true,
+        "deliveryFreeFormFriendly": true,
+        "deliveryIncrementalMissingFieldRecovery": true,
+        "deliveryThreeLineAddressCapture": true,
+        "particularSearchMode": "plex_option_list_then_lookup",
+        "particularDrugSearchMode": "snapshot_grouped_by_coddroga_then_live_lookup",
+        "particularGenericSearchEnabled": true,
+        "particularGenericTypoTolerance": true,
+        "particularWholeWordFiltering": true,
+        "particularAdvisorFallbackOption": true,
+        "particularRecentProductReorder": true,
+        "lastOrderDetailedPersistence": true,
+        "sameDrugAlternativesWhenOutOfStock": true,
+        "presentationsUnpaginated": true,
+        "webLetterMenus": true,
+        "webLetterInstructionOnly": true,
+        "globalRestartToInitialGreeting": true,
+        "finalSummarySectionHeadings": "bold_with_separator",
+        "plainEmailInFinalSummary": true,
+        "coloredOperationalTags": true,
+        "nativeWhatsAppBusinessLabels": true,
+        "inlineOverlayEnabled": false,
+        "inlineNativeLabelNamesEnabled": true,
+        "managedNativeLabelCatalog": [
+            "Delivery",
+            "Mostrador",
+            "Particular",
+            "Programa de sobrepeso y diabetes",
+            "Obra social",
+            "Prueba",
+            "Esperando a ser atendido por asesor",
+            "Finalizado"
+        ],
+        "postCheckoutAdvisorPatienceReply": "Te pedimos paciencia, por favor, en breve un asesor se va a comunicar por este medio para terminar la compra.",
+        "advisorClosureFarewell": "Muchas gracias por confiar en Farmacia Delko. Fue un gusto acompañarte. Cuando necesites algo, escribinos de nuevo por este medio; vamos a estar encantados de ayudarte. Te esperamos pronto.",
+        "advisorHandoffStateResolution": "idle_waitingAdvisor_is_considered_active_for_manual_handoff_and_closure",
+        "lookupAdapter": "apps/whatsapp-bot-node/src/pharmacy_system_lookup.js",
+        "stockUpdatedDocFile": "API_OnzeCenter_Documentacion_Actualizada.pdf"
+    },
+    "knownPriorities": [
+        "plex_stock_high_page_403_fix",
+        "whatsapp_app_secret_production",
+        "meta_access_token_refresh_for_webhook_sync",
+        "meta_official_go_live",
+        "human_handoff_sla",
+        "campaign_exports"
+    ],
+    "latestLiveValidatedFlows": [
+        "delivery_particular_lookup_to_handoff",
+        "delivery_particular_multi_item_checkout",
+        "delivery_saved_address_reuse",
+        "delivery_particular_quick_reorder",
+        "delivery_particular_drug_search",
+        "delivery_particular_generic_search_list",
+        "delivery_particular_brand_search_list",
+        "delivery_particular_three_line_address_capture",
+        "delivery_global_restart_to_initial_greeting",
+        "delivery_particular_similarity_confirmation",
+        "delivery_vacunas_lookup_to_handoff",
+        "mostrador_recipe_to_handoff",
+        "delivery_obra_social_recipe_to_handoff",
+        "post_summary_patience_hold",
+        "advisor_manual_closure_resume",
+        "delivery_particular_handoff_real_path",
+        "runtime_concurrent_chats_per_contact_isolation",
+        "advisor_handoff_variant_resolution_after_checkout"
+    ],
+    "commercialProposalSystem": {
+        "enabled": true,
+        "skillsPack": "skills/whatsapp-commercial-proposal-*",
+        "proposalFolder": "proposals/",
+        "latestProposal": "proposals/Farmacia_Delko_Propuesta_Comercial_v1.md"
+    },
+    "linguisticQa": {
+        "enabled": true,
+        "skillFolder": "skills/whatsapp-chatbot-linguistic",
+        "style": "rioplatense_spanish",
+        "singleInteractivePromptPerStep": true,
+        "interactiveMenuStyle": "adaptive_buttons_then_list",
+        "singleCardLookupOutcomes": true
+    },
+    "pharmacy": {
+        "groupedSearchFallbacks": {
+            "sectionTitles": [
+                "Opciones",
+                "Productos",
+                "Ayuda"
+            ],
+            "productsBold": true,
+            "helpOptionsBold": false,
+            "advisorFallbackCopy": "Contactar asesor. El producto no esta"
+        }
     }
-  },
-  "ui": {
-    "theme": "dark",
-    "clientBoard": "friendly_non_technical",
-    "jsonVisibleToClient": false
-  },
-  "flowCapabilities": {
-    "dragNodes": true,
-    "connectNodes": true,
-    "deleteEdges": true,
-    "restoreEdges": true,
-    "zoom": true,
-    "fitToScreen": true,
-    "nodeExplainSimple": true,
-    "nodeMessageEditable": true
-  },
-  "audit": {
-    "conversationTimeline": true,
-    "testTag": "test_run",
-    "storage": "neon_postgres_primary_with_kv_legacy",
-    "connectivityHardening": {
-      "kvTimeoutMsDefault": 3500,
-      "kvRetriesDefault": 1,
-      "frontendApiTimeoutMs": 9000
-    },
-    "productionRequirement": {
-      "persistentDbRequired": true,
-      "memoryFallbackAllowedInProduction": false
-    },
-    "providerRouting": {
-      "env": "AUDIT_STORAGE_PROVIDER",
-      "supported": [
-        "postgres",
-        "kv",
-        "auto"
-      ]
-    }
-  },
-  "business": {
-    "displayName": "Farmacia Delko"
-  },
-  "knownPriorities": [
-    "meta_official_go_live",
-    "human_handoff_sla",
-    "campaign_exports"
-  ],
-  "commercialProposalSystem": {
-    "enabled": true,
-    "skillsPack": "skills/whatsapp-commercial-proposal-*",
-    "proposalFolder": "proposals/",
-    "latestProposal": "proposals/Farmacia_Delko_Propuesta_Comercial_v1.md"
-  }
 }

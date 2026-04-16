@@ -1,15 +1,27 @@
 const { Pool } = require("pg");
+const {
+  summarizeInboundMessage,
+  summarizeOutboundAction,
+  truncateText,
+  normalizeArray
+} = require("./conversation_audit_formatters");
+const { mergeConversationContextTags, buildSummaryFromContext } = require("./conversation_audit_tags");
+const { inferConversationPresentation } = require("./conversation_audit_inference");
+const { applyConversationPreview } = require("./conversation_audit_preview");
 
 const DATABASE_URL = String(
   process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || ""
 ).trim();
 const DB_ENABLED = Boolean(DATABASE_URL);
-const IS_PRODUCTION_RUNTIME = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+const IS_PRODUCTION_RUNTIME =
+  process.env.NODE_ENV === "production" ||
+  Boolean(process.env.VERCEL_URL || process.env.NOW_REGION || process.env.VERCEL_REGION);
 const AUDIT_ALLOW_MEMORY_FALLBACK = String(
   process.env.AUDIT_ALLOW_MEMORY_FALLBACK || (IS_PRODUCTION_RUNTIME ? "false" : "true")
 )
   .trim()
   .toLowerCase() === "true";
+const { stripInactivityPromptTag } = require("./inactivity_cron");
 const TEST_CONTACT_IDS = new Set(
   String(process.env.TEST_CONTACT_IDS || "")
     .split(",")
@@ -49,6 +61,19 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function toIsoTimestamp(value, fallback = null) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return date.toISOString();
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -83,17 +108,6 @@ function conversationId() {
   return `conv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function truncateText(value, max = 600) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
-}
-
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
 function normalizeForMatch(value) {
   return String(value || "")
     .normalize("NFD")
@@ -111,73 +125,18 @@ function isLikelyTestConversation({ contactId, contactName, inboundText }) {
   return normalized.includes("prueba") || normalized.includes("test") || normalized.includes("qa");
 }
 
-function summarizeInboundMessage(message, inboundText) {
-  const type = String(message?.type || (inboundText ? "text" : "unknown"));
-  const buttonId = String(
-    message?.interactive?.button_reply?.id ||
-      message?.button?.payload ||
-      message?.interactive?.list_reply?.id ||
-      ""
-  );
-  const text =
-    inboundText ||
-    message?.text?.body ||
-    message?.button?.text ||
-    message?.interactive?.button_reply?.title ||
-    message?.interactive?.list_reply?.title ||
-    message?.document?.caption ||
-    message?.image?.caption ||
-    "";
-
-  return {
-    type,
-    text: truncateText(text),
-    buttonId,
-    hasMedia: type === "image" || type === "document"
-  };
-}
-
-function summarizeOutboundAction(action) {
-  const type = String(action?.type || "unknown");
-  if (type === "text") {
-    return {
-      type,
-      text: truncateText(action?.text || "")
-    };
-  }
-  if (type === "interactive") {
-    return {
-      type,
-      text: truncateText(action?.text || ""),
-      buttons: normalizeArray(action?.buttons).map(button => ({
-        id: String(button?.id || ""),
-        title: truncateText(button?.title || "", 80)
-      }))
-    };
-  }
-  if (type === "image") {
-    return {
-      type,
-      url: String(action?.url || ""),
-      caption: truncateText(action?.caption || "", 200)
-    };
-  }
-  return {
-    type,
-    raw: truncateText(JSON.stringify(action || {}), 400)
-  };
-}
-
 function normalizeConversation(conv) {
   const safe = conv && typeof conv === "object" ? conv : {};
+  const context = safe.context && typeof safe.context === "object" ? safe.context : {};
+  const summaryFromContext = buildSummaryFromContext(context);
   return {
     id: String(safe.id || ""),
     contactId: String(safe.contactId || ""),
     contactName: String(safe.contactName || ""),
     status: String(safe.status || "open"),
-    openedAt: String(safe.openedAt || nowIso()),
-    closedAt: safe.closedAt ? String(safe.closedAt) : null,
-    lastEventAt: String(safe.lastEventAt || nowIso()),
+    openedAt: toIsoTimestamp(safe.openedAt, nowIso()),
+    closedAt: toIsoTimestamp(safe.closedAt, null),
+    lastEventAt: toIsoTimestamp(safe.lastEventAt, nowIso()),
     resolver: String(safe.resolver || "bot"),
     outcome: String(safe.outcome || "in_progress"),
     currentState: safe.currentState ? String(safe.currentState) : null,
@@ -185,9 +144,12 @@ function normalizeConversation(conv) {
     inboundCount: Number(safe.inboundCount || 0),
     outboundCount: Number(safe.outboundCount || 0),
     eventCount: Number(safe.eventCount || 0),
-    summary: String(safe.summary || ""),
-    tags: normalizeArray(safe.tags).map(tag => String(tag || "")).filter(Boolean),
-    context: safe.context && typeof safe.context === "object" ? safe.context : {}
+    summary: String(summaryFromContext || safe.summary || ""),
+    tags: mergeConversationContextTags(
+      normalizeArray(safe.tags).map(tag => String(tag || "")).filter(Boolean),
+      context
+    ),
+    context
   };
 }
 
@@ -196,8 +158,8 @@ function normalizeContact(profile, contactId, contactName) {
   return {
     contactId: String(safe.contactId || contactId || ""),
     contactName: String(contactName || safe.contactName || ""),
-    firstSeenAt: String(safe.firstSeenAt || nowIso()),
-    lastSeenAt: String(safe.lastSeenAt || nowIso()),
+    firstSeenAt: toIsoTimestamp(safe.firstSeenAt, nowIso()),
+    lastSeenAt: toIsoTimestamp(safe.lastSeenAt, nowIso()),
     totalConversations: Number(safe.totalConversations || 0),
     totalInboundMessages: Number(safe.totalInboundMessages || 0),
     totalOutboundMessages: Number(safe.totalOutboundMessages || 0),
@@ -230,6 +192,65 @@ function rowToConversation(row) {
     tags: row.tags,
     context: row.context
   });
+}
+
+function mergeConversationDraftOverCurrent(current, draft) {
+  const safeCurrent = normalizeConversation(current);
+  const safeDraft = draft && typeof draft === "object" ? draft : {};
+  const next = {
+    ...safeCurrent,
+    contactId: trimPreferred(safeDraft.contactId, safeCurrent.contactId),
+    contactName: trimPreferred(safeDraft.contactName, safeCurrent.contactName),
+    status: trimPreferred(safeDraft.status, safeCurrent.status),
+    resolver: trimPreferred(safeDraft.resolver, safeCurrent.resolver),
+    outcome: trimPreferred(safeDraft.outcome, safeCurrent.outcome),
+    currentState: trimPreferred(safeDraft.currentState, safeCurrent.currentState),
+    currentStep: trimPreferred(safeDraft.currentStep, safeCurrent.currentStep),
+    summary: trimPreferred(safeDraft.summary, safeCurrent.summary),
+    openedAt: safeDraft.openedAt || safeCurrent.openedAt,
+    closedAt: safeDraft.closedAt !== undefined ? safeDraft.closedAt : safeCurrent.closedAt,
+    inboundCount: Number(safeDraft.inboundCount ?? safeCurrent.inboundCount),
+    outboundCount: Number(safeDraft.outboundCount ?? safeCurrent.outboundCount),
+    eventCount: Number(safeDraft.eventCount ?? safeCurrent.eventCount),
+    context: {
+      ...(safeCurrent.context || {}),
+      ...(safeDraft.context && typeof safeDraft.context === "object" ? safeDraft.context : {})
+    }
+  };
+
+  const mergedTags = new Set([...(safeCurrent.tags || []), ...normalizeArray(safeDraft.tags)]);
+  next.tags = Array.from(mergedTags).slice(0, 40);
+  return normalizeConversation(next);
+}
+
+function trimPreferred(value, fallback) {
+  return trimText(value) ? String(value) : fallback || null;
+}
+
+function trimText(value) {
+  return String(value || "").trim();
+}
+
+function mapEventsByConversation(rows) {
+  const grouped = new Map();
+  for (const row of normalizeArray(rows)) {
+    const conversationId = String(row?.conversation_id || "");
+    if (!conversationId) {
+      continue;
+    }
+    if (!grouped.has(conversationId)) {
+      grouped.set(conversationId, []);
+    }
+    grouped.get(conversationId).push({
+      id: row.event_id,
+      sequence: Number(row.sequence || 0),
+      conversationId,
+      timestamp: row.timestamp ? new Date(row.timestamp).toISOString() : nowIso(),
+      type: row.type,
+      payload: row.payload && typeof row.payload === "object" ? row.payload : {}
+    });
+  }
+  return grouped;
 }
 
 async function ensureSchema() {
@@ -535,34 +556,7 @@ async function ensureOpenConversation(client, contactId, contactName) {
 }
 
 function mergeContextTags(conversation, sessionData) {
-  const tags = new Set(normalizeArray(conversation.tags));
-  if (sessionData.orderType) {
-    tags.add(`order_type:${String(sessionData.orderType).toLowerCase()}`);
-  }
-  if (sessionData.mode) {
-    tags.add(`mode:${String(sessionData.mode).toLowerCase()}`);
-  }
-  if (sessionData.zone) {
-    tags.add(`zone:${String(sessionData.zone).toLowerCase()}`);
-  }
-  conversation.tags = Array.from(tags).slice(0, 40);
-}
-
-function buildSummaryFromContext(sessionData) {
-  const parts = [];
-  if (sessionData.orderType) {
-    parts.push(`tipo ${sessionData.orderType}`);
-  }
-  if (sessionData.mode) {
-    parts.push(`modalidad ${sessionData.mode}`);
-  }
-  if (sessionData.zone) {
-    parts.push(`zona ${sessionData.zone}`);
-  }
-  if (sessionData.items) {
-    parts.push(`${sessionData.items} items`);
-  }
-  return parts.join(" | ");
+  conversation.tags = mergeConversationContextTags(conversation.tags, sessionData);
 }
 
 async function appendEvent(client, conversation, type, payload) {
@@ -570,7 +564,7 @@ async function appendEvent(client, conversation, type, payload) {
   if (!currentRow) {
     return null;
   }
-  const current = rowToConversation(currentRow);
+  const current = mergeConversationDraftOverCurrent(rowToConversation(currentRow), conversation);
   const sequence = Number(current.eventCount || 0) + 1;
   const timestamp = nowIso();
   const event = {
@@ -625,6 +619,7 @@ async function recordInboundMessage({ contactId, contactName, inboundText, inbou
 
       const conv = normalizeConversation(result.conv);
       conv.inboundCount += 1;
+      conv.tags = stripInactivityPromptTag(conv.tags);
       if (markAsTest) {
         conv.tags = Array.from(new Set([...(conv.tags || []), "test_run"])).slice(0, 40);
       }
@@ -678,6 +673,18 @@ async function recordFlowTransition({ conversationId: id, flowMeta }) {
       if (meta.handedToHuman) {
         conversation.status = "agent_pending";
         conversation.resolver = "human_pending";
+      } else {
+        const explicitlyClearedAdvisor =
+          Object.prototype.hasOwnProperty.call(sessionData, "waitingAdvisor") &&
+          sessionData.waitingAdvisor === false;
+
+        if (meta.closed) {
+          conversation.status = "closed";
+          conversation.resolver = "human";
+        } else if (explicitlyClearedAdvisor && conversation.status === "agent_pending") {
+          conversation.status = "open";
+          conversation.resolver = "automatic";
+        }
       }
 
       const payload = {
@@ -763,6 +770,25 @@ async function recordOutboundMessage({ conversationId: id, action, status = "sen
   }
 }
 
+async function addConversationTag(id, tag) {
+  if (!id || !tag) return null;
+  try {
+    return await withTransaction(async client => {
+      const row = await getConversationRow(client, id, true);
+      if (!row) return null;
+      const conv = rowToConversation(row);
+      const tags = new Set([...(conv.tags || [])]);
+      tags.add(String(tag));
+      conv.tags = Array.from(tags).slice(0, 40);
+      await saveConversationRow(client, conv);
+      return conv;
+    });
+  } catch (err) {
+    markWriteError(err);
+    throw createStorageUnavailableError(err.message || "add_tag_failed");
+  }
+}
+
 async function listConversations({ limit = 60, status = "", contactId = "", tag = "" } = {}) {
   if (!DB_ENABLED) {
     throw createStorageUnavailableError("database_url_not_configured");
@@ -780,22 +806,45 @@ async function listConversations({ limit = 60, status = "", contactId = "", tag 
     params.push(contactId);
     clauses.push(`contact_id = $${params.length}`);
   }
-  if (tag) {
-    params.push(tag);
-    clauses.push(`tags ? $${params.length}`);
-  }
-
-  params.push(max);
+  const requiredTags = normalizeArray(
+    Array.isArray(tag) ? tag : String(tag || "").split(",")
+  )
+    .map(value => String(value || "").trim())
+    .filter(Boolean);
+  const fetchLimit = Math.max(max * (requiredTags.length ? 6 : 1), max);
+  params.push(fetchLimit);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const query = `SELECT * FROM audit_conversations ${where} ORDER BY last_event_at DESC LIMIT $${params.length}`;
 
   try {
-    const rows = await withClient(async client => {
+    const conversations = await withClient(async client => {
       const result = await client.query(query, params);
-      return result.rows;
+      const rows = result.rows || [];
+      if (!rows.length) {
+        return [];
+      }
+
+      const ids = rows.map(row => row.id);
+      const eventResult = await client.query(
+        `
+          SELECT conversation_id, sequence, event_id, timestamp, type, payload
+          FROM audit_events
+          WHERE conversation_id = ANY($1::text[])
+          ORDER BY conversation_id ASC, sequence ASC
+        `,
+        [ids]
+      );
+
+      const eventMap = mapEventsByConversation(eventResult.rows || []);
+      return rows.map(row => {
+        const events = eventMap.get(row.id) || [];
+        return applyConversationPreview(inferConversationPresentation(rowToConversation(row), events), events);
+      });
     });
     clearReadError();
-    return rows.map(rowToConversation);
+    return conversations
+      .filter(conversation => requiredTags.every(requiredTag => (conversation.tags || []).includes(requiredTag)))
+      .slice(0, max);
   } catch (error) {
     markReadError(error);
     throw createStorageUnavailableError(error.message || "list_conversations_failed");
@@ -870,16 +919,21 @@ async function getConversationDetail(conversationId, limit = 250) {
 
       clearReadError();
 
+      const events = eventsResult.rows.map(row => ({
+        id: row.event_id,
+        sequence: Number(row.sequence || 0),
+        conversationId: row.conversation_id,
+        timestamp: row.timestamp ? new Date(row.timestamp).toISOString() : nowIso(),
+        type: row.type,
+        payload: row.payload && typeof row.payload === "object" ? row.payload : {}
+      }));
+
       return {
-        conversation: rowToConversation(conversationRow),
-        events: eventsResult.rows.map(row => ({
-          id: row.event_id,
-          sequence: Number(row.sequence || 0),
-          conversationId: row.conversation_id,
-          timestamp: row.timestamp ? new Date(row.timestamp).toISOString() : nowIso(),
-          type: row.type,
-          payload: row.payload && typeof row.payload === "object" ? row.payload : {}
-        }))
+        conversation: applyConversationPreview(
+          inferConversationPresentation(rowToConversation(conversationRow), events),
+          events
+        ),
+        events
       };
     });
   } catch (error) {
@@ -910,5 +964,6 @@ module.exports = {
   listConversations,
   getConversationDetail,
   getConversationSummary,
-  getAuditStorageStatus
+  getAuditStorageStatus,
+  addConversationTag
 };

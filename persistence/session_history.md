@@ -1,5 +1,489 @@
 # Session History Log
 
+## 2026-04-15
+
+- Added a full GitHub documentation pack for repository onboarding and reinstall:
+  - new root `README.md`
+  - new `docs/INSTALACION_EN_OTRA_MAQUINA.md`
+  - new `docs/GUIA_GITHUB_Y_REPOSITORIO.md`
+- Refreshed the existing runbooks that a fresh clone would actually need:
+  - `docs/CLIENT_RUNBOOK.md`
+  - `docs/NEON_MIGRATION.md`
+- Documentation now includes:
+  - repo URL
+  - clone URL
+  - direct ZIP download URL
+  - production URL
+  - current npm scripts
+  - Windows reinstall steps
+  - storage setup
+  - WhatsApp Web companion install path
+  - canonical root artifacts and their purpose
+- The documentation was aligned to the current code state:
+  - runtime app root is `apps/whatsapp-bot-node`
+  - GitHub Actions standardize on `Node 22`
+  - `/flows/client` is currently a redirect to `/flows`
+
+- Locked the guided treatment checkout path so the bot no longer reopens the product-search path from that branch:
+  - visible branch renamed to `Programa de sobrepeso y diabetes`
+  - after treatment product review, the summary now offers only:
+    - `Terminar compra`
+    - `Volver al menú anterior`
+  - `Agregar algo más` is no longer available in that branch
+- Normalized guided navigation copy:
+  - `Volver` -> `Volver al menú anterior`
+  - only one visible `Volver al inicio` remains
+  - `Volver al inicio` now returns to the real root menu `Delivery / Mostrador`
+  - the visible restart shortcut is no longer injected into guided menus
+- Propagated the new client-facing program name to labels, dashboard filters, companion tags and native-label expectations:
+  - `Programa obesidad y diabetes` -> `Programa de sobrepeso y diabetes`
+- Validation completed for the requested scope:
+  - `node --test apps/whatsapp-bot-node/src/conversation_rules.test.js`
+  - `node --test apps/whatsapp-bot-node/src/conversation_audit_tags.test.js`
+  - `node --test apps/whatsapp-bot-node/src/conversation_audit_inference.test.js`
+  - `node --test apps/whatsapp-bot-node/src/whatsapp_web_companion.test.js`
+  - `node --test apps/whatsapp-bot-node/src/whatsapp_web_native_labels.test.js`
+- Residual unrelated validation note:
+  - `node --test apps/whatsapp-bot-node/src/index.runtime.test.js` currently fails on three advisor-handoff runtime cases unrelated to this UX/menu change
+
+## 2026-04-14
+
+- Implemented the requested offline-recovery behavior for WhatsApp Web:
+  - before this change, when the bot came back after being offline, the reconnect baseline seeded existing inbound messages as already seen
+  - that prevented the bot from replying to customer messages sent while the process/browser was down
+- Hardened `apps/whatsapp-bot-node/src/index.js` without touching the normal conversation rules:
+  - added recovery selection that keeps only the latest pending inbound per logical contact
+  - grouped `@lid`, `@c.us` and bare variants of the same phone as one chat for that recovery step
+  - recovery now runs before the web baseline is refreshed, so the rescued message is handled first
+  - rescued startup messages are allowed through even if they are older than the fresh process baseline
+  - once that recovery finishes, the remaining backlog is still seeded as seen to avoid replaying old history
+- Added regression coverage in:
+  - `apps/whatsapp-bot-node/src/index.runtime.test.js`
+  - new tests prove:
+    - a historical inbound can be recovered explicitly after restart
+    - recovery keeps only the latest pending message for the same logical contact
+- Validation completed:
+  - `node --test apps/whatsapp-bot-node/src/index.runtime.test.js`
+  - `node --test apps/whatsapp-bot-node/src/conversation_rules.test.js`
+- Practical outcome:
+  - if a customer writes while the bot is offline, when the bot comes back it now answers from that latest pending message instead of staying silent
+
+- Investigated the repeated GitHub email failures for workflow:
+  - `WhatsApp Bot Inactivity Check`
+  - failing run reported by the user:
+    - `24369484280`
+- Confirmed the workflow itself was not misconfigured:
+  - it successfully authenticated with `CRON_SECRET`
+  - failure happened in production when calling:
+    - `GET /api/cron/inactivity`
+- Reproduced the production failure with the real Vercel `CRON_SECRET` and confirmed the exact response body:
+  - `500`
+  - `audit_storage_unavailable:Your project has exceeded the data transfer quota. Upgrade your plan to increase limits.`
+- Root cause:
+  - the inactivity cron endpoint treated persistent audit-storage degradation as a hard runtime failure
+  - GitHub Actions therefore failed every scheduled run and sent repeated email notifications
+- Fix applied:
+  - `apps/whatsapp-bot-node/src/index.js`
+    - added a dedicated inactivity-cron error response builder
+    - `audit_storage_unavailable` is now downgraded to a safe operational skip:
+      - HTTP `200`
+      - `{ ok: true, skipped: true, reason: "audit_storage_unavailable", ... }`
+  - `.github/workflows/whatsapp-bot-inactivity-check.yml`
+    - the workflow now echoes the endpoint JSON response on success for easier diagnosis
+  - `apps/whatsapp-bot-node/src/index.runtime.test.js`
+    - added regression coverage for the safe-skip behavior
+- Validation completed:
+  - targeted runtime test passed
+  - live production deploy completed manually to:
+    - `https://whatsapp-bot-node-chatbot1.vercel.app`
+  - manual authenticated production call now returns `200 OK`
+  - manual workflow dispatch run:
+    - `24379311149`
+    - completed with `success`
+- Practical outcome:
+  - recurring GitHub failure emails from the scheduled inactivity check should stop
+  - if audit storage temporarily degrades again, the cron will skip instead of failing the workflow
+
+## 2026-04-13
+
+- Investigated the live concurrent-chat failure reported with two real chats in parallel:
+  - one contact could stop receiving replies after `Delivery -> Particular`
+  - another contact could keep progressing
+  - the runtime still looked globally healthy
+- Confirmed the real root cause was a per-contact operational freeze, not a global parser failure:
+  - one outbound path could hang for a single chat
+  - the old watchdog only checked coarse readiness/session state and therefore missed that failure mode
+- Hardened `apps/whatsapp-bot-node/src/index.js`:
+  - added `/api/system/liveness`
+  - liveness now exposes:
+    - active/stuck inbound queues
+    - last inbound received/processed
+    - last outbound sent
+    - recent runtime timeout/error
+  - outbound dispatch now:
+    - times out each recipient attempt individually
+    - retries across WhatsApp id variants of the same contact (`@lid`, `@c.us`, bare)
+    - reconciles the operational browser before trying the next candidate
+- Hardened the watchdog/launcher:
+  - `apps/whatsapp-bot-node/scripts/start_whatsapp_bot_silent.ps1`
+    - now treats the bot as unhealthy if liveness fails, even when health/ready still look green
+  - `apps/whatsapp-bot-node/scripts/run_whatsapp_bot_forever.ps1`
+    - now checks `/api/system/liveness`
+    - restarts the stack on repeated liveness failures
+    - also collapses duplicate `node src/index.js` instances defensively
+- Revalidated targeted automated coverage after the fix:
+  - `node --test src/index.runtime.test.js` -> all pass
+  - `node --test src/conversation_rules.test.js` -> all pass
+- Reinstalled the operator launch path after the fix:
+  - desktop shortcut recreated:
+    - `C:\Users\Taligent\Desktop\Farmacia Delko Bot.lnk`
+  - Startup-folder watchdog shortcut recreated
+- Local runtime after restart now reports:
+  - `/health` -> `ok:true`
+  - `/api/system/ready` -> `ok:true`
+  - `/api/system/liveness` -> `ok:true`
+- Business behavior preserved:
+  - `Delivery -> Particular` still hands the conversation directly to a human advisor in the live flow
+  - the fix was operational only; it did not revert the requested human-handoff behavior
+
+- Fixed the remaining connected-browser false-outage bug:
+  - a stale observed WhatsApp Web page could close later and incorrectly mark the whole runtime as `browser_page_closed`
+  - this was the likely root cause behind healthy sessions that suddenly stopped answering and looked dead after a tab/window shuffle
+- Hardened `apps/whatsapp-bot-node/src/whatsappClient.js`:
+  - page-close observers now ignore stale pages that are no longer `client.pupPage`
+  - browser-disconnect observers now ignore stale browsers that are no longer the active `pupBrowser`
+  - connected-browser recovery now:
+    - prefers the existing live `pupBrowser`
+    - reconnects via `puppeteer.connect(...)` when needed
+    - rescans live browser pages to pick the real operational WhatsApp Business tab
+    - rebuilds `isAuthenticated` / `isReady` from the recovered page instead of trusting dead references
+- Validation after the fix:
+  - `npm test` -> `114 pass / 2 skip / 0 fail`
+  - local restart completed
+  - `/health` -> `ok:true`
+  - `/api/system/ready` -> `ok:true`
+  - runtime reported:
+    - `transport=web`
+    - `authMode=connected_browser`
+    - `authenticated=true`
+    - `sessionReady=true`
+    - `disconnectReason=""`
+- Confirmed the requested business rule for `Particular`:
+  - in the real customer path (`Delivery -> Particular`), the bot already hands the chat to a human advisor immediately
+  - validated directly with a live-style script:
+    - response text `Particular. En breve un asesor se va a comunicar por este medio para ayudarte con tu pedido.`
+    - `handedToHuman=true`
+    - `waitingAdvisor=true`
+  - the automated Particular lookup path remains only as an internal helper/test flow for lab coverage, not as the live customer path
+
+- Investigated the operator report that around `20:26` the customer saw the first menu but subsequent replies (`A`, `Menu`, `B`, `A`, `Hola`) no longer advanced.
+- Live findings:
+  - local `/health` and `/api/system/ready` were green
+  - the bot-controlled remote browser still had the real WhatsApp Business page open
+  - inline labels were present in that controlled browser
+  - the user-facing complaint aligned with an operator UX/runtime issue:
+    - the controlled browser window was being launched minimized
+    - double-clicking the desktop shortcut while the watchdog was already healthy looked like “nothing happened”
+    - this made it too easy to interact with the wrong/hidden browser state
+- Hardened the operator launch path:
+  - `apps/whatsapp-bot-node/scripts/start_whatsapp_remote_browser.ps1`
+    - now restores and foregrounds the controlled browser window if it already exists
+    - no longer starts minimized
+    - now adds anti-background-throttling flags for Chrome/Edge
+  - `apps/whatsapp-bot-node/scripts/start_whatsapp_bot_silent.ps1`
+    - if the watchdog is already healthy, double-click now still restores the operational browser
+    - if it starts a new hidden watchdog, it also opens/restores the browser right away
+- Revalidation after the launcher fix:
+  - `npm test` -> `113 pass / 2 skip / 0 fail`
+  - `/health` -> `ok:true`
+  - `/api/system/ready` -> `ok:true`
+  - the controlled browser again showed inline left-row labels such as:
+    - `Delivery | Esperando a ser atendido por asesor`
+    - `Delivery | Programa obesidad y diabetes`
+
+- Closed the last human-handoff gap in the local `web` transport:
+  - the conversational rule set already knew that manual advisor intervention should silence the bot
+  - the runtime now detects that intervention across all contact-id variants (`@lid`, `@c.us`, bare number)
+  - this prevents the checkout patience auto-reply from appearing once the pharmacy has started replying manually
+- Added a local dev endpoint to validate manual advisor takeover directly:
+  - `POST /api/dev/whatsapp/simulate-advisor-manual`
+- Revalidated the full handoff lifecycle:
+  - checkout summary -> patience hold
+  - advisor manual reply -> bot silent
+  - advisor closure phrase -> warm farewell + `Finalizado`
+  - next customer message -> normal bot resume
+- Hardened the web sender:
+  - `apps/whatsapp-bot-node/src/webTextClient.js` now generates a fallback outbound message id if `whatsapp-web.js` returns a partial send response without `response.id`
+  - this avoids breaking the advisor-close path in the web lab
+- Validation:
+  - `npm test`
+  - result: `110/110` passing with `2` expected skips
+  - local `/health` -> `ok:true`
+  - local `/api/system/ready` -> `ok:true`
+
+## 2026-04-12
+
+- Fixed the post-summary trap and advisor-review spam loop in the live web transport:
+  - the active trailing `snapshotSessionData` definition now preserves `waitingAdvisor`
+  - the final summary can still hand off operationally while `MENU` resumes the bot cleanly afterward
+  - agent-review auto-notices now use a cooldown and stop repeating on every follow-up message
+- Hardened inbound duplicate suppression for WhatsApp Web:
+  - in addition to prompt-specific deduplication, the bot now applies a short coarse duplicate window across prompt changes
+  - this prevents one repeated inbound event from cascading through multiple steps with the same typed letter
+- Expanded human-handoff detection:
+  - customer phrases asking for a human now also match feminine wording such as `humana`
+- Added human-advisor closure automation:
+  - new file `apps/whatsapp-bot-node/src/advisor_closure_detection.js`
+  - if an advisor manually writes a closure phrase like `cerrada`, `cerrado`, `finalizada`, `concluida`, etc., the bot now:
+    - closes the pending advisor state
+    - removes the waiting-advisor tag
+    - sends one warm farewell automatically
+- Reworked visible label-name rendering inside the live WhatsApp Web browser:
+  - `apps/whatsapp-bot-node/src/whatsapp_web_overlay_sync.js` now renders safe inline label names in:
+    - the chat header
+    - the left conversation list
+  - the old detached/floating pill approach was removed
+  - label names now use the safe ASCII separator `|`
+- Rebuilt `apps/whatsapp-bot-node/src/choice_format.js` cleanly to remove broken source encoding from choice-label composition.
+- Revalidated automated coverage:
+  - targeted suite: `42/42` passing
+  - full suite: `96/96` passing
+- Reinstalled local operator-proof launching after the latest fixes:
+  - desktop shortcut installer: `npm run lab:install-shortcut`
+  - startup installer: `npm run lab:install-startup`
+  - silent launch path: `npm run lab:start-silent`
+  - full runtime restart: `npm run lab:restart`
+  - local `/health` -> `ok:true`
+  - local `/api/system/ready` -> `ok:true`
+
+- Added a silent launcher script for non-technical operators:
+  - `apps/whatsapp-bot-node/scripts/start_whatsapp_bot_silent.ps1`
+- Added a desktop-shortcut installer:
+  - `apps/whatsapp-bot-node/scripts/install_whatsapp_bot_desktop_shortcut.ps1`
+- Added package scripts:
+  - `npm run lab:start-silent`
+  - `npm run lab:install-shortcut`
+- Hardened startup installation for Windows without admin rights:
+  - if Scheduled Task registration returns access denied, the installer now creates a Startup-folder shortcut instead
+- Local validation after closing the visible Node terminal:
+  - bot relaunched successfully in background mode
+  - desktop shortcut created on the Desktop
+  - Startup shortcut created in the user's Startup folder
+  - `/health` -> `ok:true`
+  - `/api/system/ready` -> `ok:true`
+
+- Fixed mutually exclusive operational tags in the live WhatsApp Web path:
+  - `Delivery` and `Mostrador` no longer accumulate together on the same conversation
+  - order-type tags now also replace one another cleanly:
+    - `Particular`
+    - `Programa obesidad y diabetes`
+    - `Obra social`
+- Added and validated the new native WhatsApp Business label:
+  - `Esperando a ser atendido por asesor`
+  - the bot now applies it automatically when the conversation is handed off to a human advisor
+- Refined grouped fallback list rendering for older-adult readability in `web` mode:
+  - visible section headers:
+    - `*Opciones*`
+    - `*Productos*`
+    - `*Ayuda*`
+  - product rows now render bold
+  - navigation/help rows remain plain
+  - advisor escalation copy now renders as:
+    - `Contactar asesor. El producto no esta`
+- Revalidated mojibake-sensitive visible copy in the active flow:
+  - `Encontre estas opciones...`
+  - `Elegi la correcta.`
+  - `?Est?s adherido al Recetario Solidario?`
+- Validation:
+  - `npm test`
+  - result: `90/90` passing
+- Hardened the live local web runtime so it no longer lies about readiness when the underlying browser page is gone:
+  - `apps/whatsapp-bot-node/src/whatsappClient.js` now binds close/disconnect observers on the real Puppeteer page/browser
+  - if the WhatsApp page is closed, runtime status drops out of `ready/authenticated` instead of staying green with a dead session
+- Fixed a startup race in inbound web processing:
+  - `apps/whatsapp-bot-node/src/index.js` no longer seeds processed inbound message IDs from `now - 20s`
+  - it now uses a fixed process-start watermark so fresh customer messages sent during restart are not swallowed as backlog
+- Improved native-label resilience:
+  - native label bootstrap now retries if the first attempt fails because the browser page was not ready yet
+  - after restart, `GET /api/dev/whatsapp/native-labels/status` returned the live native label catalog again
+- Reduced operator confusion during restart:
+  - `apps/whatsapp-bot-node/scripts/restart_whatsapp_lab.ps1` now relaunches the browser script inline, avoiding an extra nested PowerShell window
+- Added operator-proof automation scripts:
+  - `apps/whatsapp-bot-node/scripts/run_whatsapp_bot_forever.ps1`
+    - watchdog loop that keeps Chrome remote + Node alive
+    - restarts the stack automatically after repeated `/health` or `/api/system/ready` failures
+  - `apps/whatsapp-bot-node/scripts/install_whatsapp_bot_startup.ps1`
+    - registers a Scheduled Task at logon so the pharmacy team does not need to know Node or manually relaunch the bot
+- Validation:
+  - local `/health` -> `ok:true`
+  - local `/api/system/ready` -> `ok:true`
+  - local `/api/dev/whatsapp/native-labels/status` -> `ok:true`
+  - automated suite stayed green at `88/88`
+
+- Reworked the visual label-name presentation inside the live WhatsApp Web lab:
+  - native WhatsApp Business labels remain the operational source of truth
+  - the previous detached row-pill overlay was removed
+  - label names are now rendered inline next to the native label icon area of the real chat row
+  - live DOM validation confirmed:
+    - old overlay nodes removed
+    - visible inline text `Delivery · Programa obesidad y diabetes`
+    - clicking the label-name area still selects/opens the chat
+- Disabled row-tag painting in the companion extension so it no longer competes visually with the native-label experience.
+- Hardened the repeated-letter bug beyond the `MENU` path:
+  - duplicate-inbound suppression now fingerprints the active prompt/menu
+  - the same typed letter (for example `A`) is allowed across consecutive guided steps such as:
+    - category -> brand
+    - brand -> presentation
+  - added regression coverage for the program/brand/presentation path
+- Revalidated the Recetario Solidario prompt in the live lab chat after a forced end-to-end simulated walkthrough:
+  - current visible copy is:
+    - `Antes de cerrar el pedido, ¿Estás adherido al Recetario Solidario?`
+- Validation:
+  - `npm test`
+  - result: `88/88` passing
+- Fixed the `MENU` reopen regression in the local web transport:
+  - the bot had been redrawing the root menu without re-arming prompt-choice memory
+  - customers therefore had to type `A` twice after `MENU`
+  - `MENU` now routes back through the real root flow while preserving `profile.welcomed`
+  - added a regression test that proves the first `A` advances immediately after `MENU`
+- Hardened visible tagging inside the live WhatsApp Web browser:
+  - the remote Chrome launcher now auto-loads `apps/whatsapp-web-companion-extension`
+  - the companion now prefers `http://localhost:3000` first and refreshes faster in the lab
+  - because the extension content script still proved flaky on current WhatsApp Web builds, the backend now injects operational chips directly into the connected browser page via `apps/whatsapp-bot-node/src/whatsapp_web_overlay_sync.js`
+  - direct DOM validation against the real browser confirmed visible row chips for `Delivery` and `Programa obesidad y diabetes`
+- Validation:
+  - `npm test`
+  - result: `83/83` passing
+- Hardened the WhatsApp Web text-menu UX for older-adult friendliness:
+  - switched the fallback interaction model from numeric wording to letter-based wording
+  - customers now answer guided menus with `A`, `B`, `C`, etc.
+  - the fallback renderer already used bold letter labels; the conversation layer now fully honors them end to end
+- Added prompt-choice memory in `apps/whatsapp-bot-node/src/conversation_rules_v2.js` so typed letters resolve back to the correct internal button/list IDs across:
+  - main menu
+  - category menu
+  - particular search mode
+  - product option lists
+  - wizard selections
+- Added `Volver al inicio` as contextual navigation across the guided menus in web mode:
+  - returns to the category menu (`Particular`, `Programa obesidad y diabetes`, `Obra social`, `Volver`)
+  - remains hidden only from the initial `Delivery / Mostrador` root menu
+- Reworked invalid-choice handling:
+  - instead of asking the customer to type product/service words, the bot now answers with gentle guidance and immediately re-sends the current menu
+  - visible guidance now says `Respondé con la letra de la opción.`
+- Fixed a missing in-memory duplicate tracker declaration:
+  - `recentInboundFingerprints`
+  - this restored test stability and preserved duplicate suppression behavior
+- Fixed a KV hydration race:
+  - when `LOCAL_STATE_HYDRATE_GRACE_MS=0`, same-millisecond local state no longer blocks newer remote KV state
+- Fixed a bad Spanish sanitization rule that had corrupted:
+  - `¿Cómo querés continuar?`
+  - into
+  - `¿Cómo querés continuará`
+- Updated tests to assert the corrected visible copy instead of old mojibake expectations.
+- Validation:
+  - `npm test`
+  - result: `80/80` passing
+- Manual local simulation confirmed the visible web fallback copy now renders as:
+  - `*A) ...*`
+  - `*B) ...*`
+  - and closes with `*Respondé con la letra de la opción.*`
+
+## 2026-04-11
+- Stabilized the local `whatsapp-web.js` bootstrap path for urgent lab validation:
+  - pinned `apps/whatsapp-bot-node/package.json` to `whatsapp-web.js@1.32.0`
+  - replaced the earlier invasive `inject()` monkey patch with a minimal retry wrapper in `apps/whatsapp-bot-node/src/whatsappClient.js`
+  - added browser auto-detection fallback so the bot prefers installed Chrome/Edge over failing bundled Chromium
+  - rotated the local test session name to `farmacia-prueba-2` after confirming the previous session directory was locked/corrupted
+- Fixed the recurring QR freeze / `browser database` error in WhatsApp Web by moving `LocalAuth` storage out of the repo path with spaces/accents and into:
+  - `C:\Users\Taligent\AppData\Local\DelkoBot\wwebjs-auth`
+- Verified the fix live:
+  - the bot browser now renders a valid QR
+  - QR scan authenticates successfully
+  - logs show `Sesion autenticada en whatsapp-web.js.`
+- Fixed local runtime detection so the app no longer suppresses `app.listen()` just because `.env` contains `VERCEL=1`:
+  - updated `apps/whatsapp-bot-node/src/config.js`
+  - updated `apps/whatsapp-bot-node/src/index.js`
+  - updated production/runtime checks in both audit stores
+- Current local operational state:
+  - `http://localhost:3000/health` responds
+  - `http://localhost:3000/api/system/ready` responds with `whatsapp.sessionInitialized=true`
+  - `whatsapp.sessionReady` still trails behind the library `ready` event, so the runtime now treats authenticated web sessions as operational
+  - the next validation step is a live inbound message against the linked test number
+- Audited the post-Gemini working tree and confirmed the current active local experiment is no longer pure Cloud API:
+  - `whatsapp-web.js`
+  - QR-linked WhatsApp Business session
+  - numbered text fallback menus for customer replies
+- Validated the current repository state in the app workspace with automated tests:
+  - `npm test`
+  - result after cleanup: `77/77` passing
+- Reordered the WhatsApp transport layer so the repo now supports two explicit modes:
+  - `WHATSAPP_TRANSPORT=cloud`
+  - `WHATSAPP_TRANSPORT=web`
+- Split outbound transport responsibilities into dedicated modules:
+  - `src/cloudMetaClient.js`
+  - `src/webTextClient.js`
+  - `src/metaClient.js` now routes by configured transport
+- Updated runtime/config behavior so `web` mode no longer incorrectly requires Cloud API credentials:
+  - `WHATSAPP_ACCESS_TOKEN`
+  - `WHATSAPP_PHONE_NUMBER_ID`
+  - webhook verification token
+- Added runtime readiness support for the linked web session:
+  - transport visible in `/api/system/ready`
+  - session initialization/ready state exposed
+  - webhook signature marked `not_applicable` in `web` mode
+- Cleaned the Node entrypoint:
+  - webhook routes only act as real webhooks in `cloud` mode
+  - `web` mode shows them as intentionally disabled
+  - shared inbound message handler extracted to avoid duplicate Cloud/Web processing logic
+  - fixed the undeclared `auditConversation` leak in the WhatsApp Web listener
+- Added regression coverage for the new interaction style:
+  - selecting menus by typing `1`, `2`, etc.
+  - selecting a product option by number
+  - formatting numbered text fallback menus in `web` mode
+- Repo hygiene:
+  - `.wwebjs_auth/` ignored
+  - `.wwebjs_cache/` ignored
+  - `.claude/` ignored at repo root
+- Updated operator runbook for transport-aware setup.
+- Added a second urgent local strategy for `web` mode:
+  - `connected_browser`
+  - attaches `whatsapp-web.js` to an already-open Chrome via `WHATSAPP_WEB_BROWSER_URL`
+- Added browser-attach support in:
+  - `apps/whatsapp-bot-node/src/config.js`
+  - `apps/whatsapp-bot-node/src/whatsappClient.js`
+- Added a local launcher script for the remote-debug Chrome profile:
+  - `apps/whatsapp-bot-node/scripts/start_whatsapp_remote_browser.ps1`
+- Added backend QR rendering as the canonical pairing surface for the web transport lab path:
+  - `http://localhost:3000/whatsapp-qr`
+- Validated the new urgent flow locally:
+  - remote Chrome launches on `http://127.0.0.1:9222`
+  - the bot attaches to that browser
+  - the full app boots on `localhost:3000`
+  - `/whatsapp-qr` renders a scannable QR from our backend
+- Fixed an important bootstrap inconsistency in the local lab:
+  - `src/config.js` now loads `.env.local` from `apps/whatsapp-bot-node` directly instead of depending on the shell working directory
+  - `/api/system/ready` now exposes `authMode`, `browserUrlConfigured`, `authenticated` and `fullyReady`
+- Added a clean restart script for the lab stack:
+  - `apps/whatsapp-bot-node/scripts/restart_whatsapp_lab.ps1`
+  - stops stale `node src/index.js`
+  - stops the dedicated remote browser profile only
+  - relaunches the remote browser and bot
+- Fixed the real pairing blocker for connected-browser mode:
+  - the launcher was opening `https://web.whatsapp.com` before `whatsapp-web.js` attached
+  - that created two WhatsApp tabs and triggered `WhatsApp está abierto en otra ventana / Usar aquí`
+  - the launcher now opens `about:blank` so the bot owns the single WhatsApp Web tab
+- Revalidated the web lab after the cleanup:
+  - `authMode=connected_browser`
+  - `/api/system/ready` reports `ready=true`, `authenticated=true`
+  - logs show `Sesion autenticada en whatsapp-web.js.`
+- Current recommendation for the lab phone:
+  - use the clean restart script
+  - launch the dedicated remote browser blank
+  - scan the QR from `/whatsapp-qr`
+  - then send a real inbound WhatsApp message to validate the flow end to end
+- Automated tests re-run after the transport changes:
+  - `77/77` passing
+
 ## 2026-03-08
 - Defined target chatbot logic based on WhatsApp screenshot flow.
 - Corrected brand naming to **Farmacia Delko**.
@@ -37,8 +521,829 @@
 - Added SQL schema file: `apps/whatsapp-bot-node/sql/audit_schema.sql`
 - Imported existing KV conversations into Neon before switching provider.
 
+## 2026-03-18
+- Registered the uploaded `Productos y Descuentos.docx` as the temporary official source for slimming-products catalog logic until API integration is available.
+- Added `docs/PRODUCTOS_Y_DESCUENTOS.md` as the normalized operational documentation extracted from the client file.
+- Added `apps/whatsapp-bot-node/src/product_discount_catalog.js` as the runtime catalog source for products, discount programs and payment conditions.
+- Replaced free-text product capture with a guided product wizard inside the order flow:
+  - laboratorio
+  - marca
+  - presentacion
+  - descuento/programa
+  - forma de pago
+  - confirmacion
+- Updated the order flow so obra social/prepaga and particular both continue into the guided product selector instead of open text product entry.
+- Updated dashboards/flow copy to describe the guided product selection path.
+- Reworked order summary text to stop inventing numeric totals while the API is still pending; the bot now summarizes confirmed products and selected discount conditions.
+- Expanded automated tests to cover the new guided catalog flow and validated the suite successfully.
+
+## 2026-03-19
+- Reworked the visible chatbot entry so the first menu now opens with `Delivery` and `Mostrador`.
+- Added a second-level service branch for:
+  - `Particular`
+  - `Tratamiento para diabetes tipo 2`
+  - `Obra Social`
+- Updated `Obra Social` so it requests the receta and then closes with a professional human-validation message.
+- Replaced the previous discount/payment wizard with the new temporary commercial flow requested by the client:
+  - treatment path: laboratorio -> marca -> presentacion -> stock/precio lookup -> recetario -> resumen
+  - particular path: texto libre -> stock/precio lookup -> recetario -> resumen
+- Added `apps/whatsapp-bot-node/src/pharmacy_system_lookup.js` as the stock/price lookup adapter:
+  - supports a future API URL template and auth header/token
+  - falls back honestly to the official local document while the API is still pending
+- Updated the default flow catalog and client conversation dashboard labels to match the new journey.
+- Made the flow engine async so the bot can await external lookups during the conversation.
+- Rewrote the automated tests around the new Delivery/Mostrador flow and validated the suite successfully.
+- Replaced that temporary `Delivery` / `Mostrador` start with a new high-conversion commercial funnel focused on health-metabolic ecommerce.
+- Added WhatsApp interactive list support end-to-end in the Meta client and dispatcher so the bot can use progressive menus instead of only quick buttons.
+- Activated a new segmented first menu:
+  - `Control de azucar`
+  - `Bajar de peso / metabolismo`
+  - `Ver todos los tratamientos`
+  - `Quiero asesoramiento`
+- Reworked the journey into progressive disclosure:
+  - goal
+  - subpath
+  - grouped treatment family
+  - product
+  - presentation
+  - stock/price lookup
+  - commercial close
+- Grouped products into three decision-friendly families before showing presentations:
+  - `Ozempic / Wegovy`
+  - `Mas economicas`
+  - `Avanzados`
+- Added persistent `Ver descuentos` entry points from the subpath, family, product and summary steps.
+- Updated the close stage to offer:
+  - `Quiero precio`
+  - `Tengo dudas`
+  - `Quiero comprar`
+  - discounts
+  - alternative comparison
+- Wired discount outcomes to the official temporary catalog examples so the bot can show documentary savings references while the live pharmacy API is still pending.
+- Rewrote the conversation tests for the new conversion funnel and validated the full suite successfully.
+- Reverted that conversion-oriented funnel in favor of the simpler operational flow requested by the client.
+- Activated again the `Delivery / Mostrador` entry with the short branch:
+  - `Particular`
+  - `Diabetes tipo 2`
+  - `Obra Social`
+- Simplified the visible copy across the flow to reduce text and keep the chatbot more direct on WhatsApp.
+- Kept `Obra Social` as:
+  - receta en foto o PDF
+  - mensaje corto de validacion profesional
+  - derivacion humana
+- Kept the requested lookup sequence for both `Particular` and `Diabetes tipo 2`:
+  - identificar producto
+  - revisar stock
+  - revisar precio
+  - preguntar `Recetario Solidario`
+  - cerrar con resumen
+- Updated the flow catalog and client conversation dashboard labels so the visual map matches the simple operational flow again.
+- Rewrote the automated tests for the simplified flow and validated the full suite successfully.
+
+## 2026-03-20
+- Reworked the visible operational branch so `Delivery` now opens:
+  - `Particular`
+  - `Vacunas`
+  - `Obra Social`
+- Kept the same official temporary document as the backend catalog source, but renamed the client-facing guided branch to `Vacunas`.
+- Changed `Mostrador` to skip the service-type menu and go directly to:
+  - receta upload
+  - short handoff message for mostrador
+- Updated `Obra Social` to keep receta upload but close with a shorter human-handoff message:
+  - "Muchas gracias"
+  - continuation by asesor
+- Added contextual `Volver` navigation across the guided flow:
+  - service selection
+  - receta upload
+  - particular input
+  - laboratorio
+  - marca
+  - presentacion
+  - recetario
+  - resumen
+- Removed the `Mas opciones` pagination from product presentations and now expose all available presentations directly in grouped WhatsApp button cards.
+- Simplified the summary CTA so it no longer shows `Cambiar prod` or `Asesor` as visible options:
+  - available stock -> `Confirmar` / `Volver`
+  - no stock -> `Volver`
+- Fixed `MENU` so it reopens the operational options without greeting the user again.
+- Updated the default flow catalog copy and routes so the visual map matches:
+  - `Mostrador` direct to receta
+  - `Vacunas` label
+  - summary with `volver`
+- Rewrote the conversation tests to cover the new UX and validated the full suite successfully.
+
+## 2026-03-21
+- Added a two-step inactivity lifecycle for open bot conversations:
+  - after 15 minutes of silence, the bot asks if the user is still there
+  - after another 15 minutes without response, the bot closes the conversation politely and invites the user to write again
+- Reset the inactivity reminder marker automatically whenever the user sends a new inbound message, so the timer starts fresh.
+- Extracted the inactivity cron behavior into a dedicated module with automated tests.
+- Added a GitHub Actions scheduler every 5 minutes so the inactivity follow-up runs automatically in production without depending on Vercel Pro cron support.
+- Reworked the conversational UI so prompts with options are sent as a single interactive card instead of split text + buttons.
+- Kept `Volver` inside the same options set, including list-based menus when there are more than 3 choices.
+- Polished visible chatbot copy toward rioplatense Spanish and added the reusable skill `skills/whatsapp-chatbot-linguistic/`.
+- Standardized the chatbot UI to use WhatsApp buttons for up to 3 options and list menus only when the platform limit is exceeded.
+- Hardened session hydration for Vercel/serverless so the bot now prefers the newest persisted KV state over stale in-memory state from warm instances, preventing jumps back to old steps such as `receta_upload` after a valid `Recetario Solidario` reply.
+- Fixed remaining split lookup responses so product-not-found, recetario and summary steps now keep text plus actionable options inside a single interactive message instead of sending a text first and a second card after that.
+
+## 2026-04-07
+- Replaced the generic placeholder pharmacy lookup with a live Plex Center integration in `apps/whatsapp-bot-node/src/pharmacy_system_lookup.js`.
+- Validated the real integration path from the provided API documentation and Postman collection:
+  - `Basic Auth`
+  - base path `wsplexcenter`
+  - products endpoint `GET /wsplexcenter/productos`
+  - stock endpoint `GET /wsplexcenter/stock`
+- Updated the lookup strategy so the bot now:
+  - searches the product in Plex Center
+  - chooses the best product match from the API response
+  - aggregates stock across `Farmacia Delko 1` and `Farmacia Delko 2`
+  - keeps the official document as fallback if the API is unavailable
+- Added defensive handling for the live stock endpoint when Plex Center repeats page `1` instead of returning the requested page:
+  - the bot now keeps the API price
+  - the stock is reported as `sin confirmacion` instead of inventing availability or treating it as a hard outage
+- Added automated tests for:
+  - Plex Center Basic Auth lookup
+  - branch stock aggregation
+  - repeated-page stock pagination behavior
+  - document fallback on API failure
+- Updated `.env.example` and project continuity files to document the new live API integration path.
+- Added a dedicated runtime readiness layer so production can explicitly report whether the chatbot is really ready for live traffic:
+  - WhatsApp runtime configured
+  - persistent audit storage active
+  - Plex Center lookup configured
+- Exposed that operational state at `GET /api/system/ready` while keeping `/health` lightweight.
+- Replaced the Bash-only production deploy script with `apps/whatsapp-bot-node/scripts/deploy_and_sync_webhook.js` so deploy + webhook sync can run cleanly from Windows.
+- Hardened local env hygiene by ignoring `.env.*` snapshots while preserving `.env.example`.
+- Loaded the Plex Center production env vars into Vercel, deployed the production alias and verified:
+  - `https://whatsapp-bot-node-chatbot1.vercel.app/health`
+  - `https://whatsapp-bot-node-chatbot1.vercel.app/api/system/ready`
+  - Meta webhook verification
+  - Meta callback sync to the production alias
+- Residual production risk:
+  - `WHATSAPP_APP_SECRET` is still not configured, so webhook signature validation is not yet enforced
+  - Plex stock pagination may still leave some products with `stock sin confirmacion`
+- Continued iterative live validation against the production webhook exposed a technical blind spot rather than a routing failure:
+  - after `Delivery`, the conversation audit API appeared to show `service_type` with empty options
+  - the real outbound message was a valid WhatsApp list, but audit serialization was dropping `interactiveType`, `buttonText` and `sections`
+- Fixed that by extracting shared audit formatters in `apps/whatsapp-bot-node/src/conversation_audit_formatters.js` and updating both audit stores to preserve interactive list payloads.
+- Added automated formatter tests covering:
+  - interactive list serialization
+  - classic button serialization
+  - inbound `list_reply` capture
+- Fixed the Windows deploy wrapper in `apps/whatsapp-bot-node/scripts/deploy_and_sync_webhook.js` so iterative production deploys no longer fail at `npx`.
+- Redeployed production and validated iterative live runs for:
+  - `Delivery -> Particular -> Mounjaro -> Recetario -> Confirmar`
+  - `Delivery -> Vacunas -> Elea -> DUTIDE -> 1 mg jer x4 -> Recetario -> Confirmar`
+  - `Mostrador -> receta`
+  - `Delivery -> Obra Social -> receta`
+- Current conclusion after live validation:
+  - the operational flow is working end to end
+  - the previous `service_type` "empty menu" symptom was audit-only and is now fixed
+  - the remaining externally observed issue is still Plex stock pagination
+- Added webhook signature hardening primitives in `apps/whatsapp-bot-node/src/webhook_security.js`:
+  - HMAC `sha256` signature builder
+  - explicit validation outcomes for missing secret, missing signature, invalid format and invalid signature
+  - support for `mock`, `not_configured`, `optional` and `enforced` runtime modes
+- Updated runtime config and readiness so production now exposes:
+  - whether `WHATSAPP_APP_SECRET` is configured
+  - whether signature enforcement is required
+  - whether the deployment is functionally ready but still not fully secure
+- Updated `src/index.js` so webhook POST requests reject invalid signatures with `401`, enforce a bounded JSON body size and emit a startup warning when production is still not hardened.
+- Added automated coverage for:
+  - valid webhook signature acceptance
+  - invalid webhook signature rejection
+  - missing secret behavior in optional vs enforced modes
+  - readiness reporting of webhook security posture
+- Redeployed production after the hardening changes.
+- Current webhook-security conclusion:
+  - hardening code is live
+  - deploy-time checks now warn if webhook signature enforcement is incomplete
+  - the remaining blocker to full enforcement is still the missing `WHATSAPP_APP_SECRET` in production
+- Refined the customer-facing lookup copy for live API results with unresolved stock:
+  - replaced `Stock: pendiente de validacion por API` with `Stock: sin confirmacion en este momento`
+  - removed the extra customer-facing phrase `Precio validado por Plex Center`
+  - kept the per-branch stock note as the visible detail when Plex cannot fully confirm stock
+- Added automated coverage for the new lookup wording in `conversation_rules.test.js` and updated Plex lookup note expectations in `pharmacy_system_lookup.test.js`.
+- Redeployed production after the copy fix.
+- Ran a controlled live production trace on the QA contact for:
+  - `hola -> Delivery -> Vacunas -> Elea -> DUTIDE -> 1 mg jer x4`
+  - the live bot now answers with `Stock: sin confirmacion en este momento` and no longer shows `Precio validado por Plex Center`
+- Owner confirmation narrowed the operational scope to a single branch:
+  - only `Delko 1` should be used for live stock lookup
+  - `Delko 2` was removed from the default branch configuration and project continuity
+- Reworked the visible pricing output so production now stays aligned to `Delko 1` end to end:
+  - lookup card shows `Producto`, `Stock Delko 1` and `Precio de lista Delko 1`
+  - discount scenarios are calculated from the live Plex price instead of static example totals
+  - the summary card preserves the same `Delko 1` discount block
+- Added automated coverage for the commercial math in `product_discount_catalog.test.js`.
+- Ran a controlled production trace for `DUTIDE 1 mg jer. prell. x 4` and confirmed the live bot now shows:
+  - `Precio de lista Delko 1`
+  - `Stock Delko 1`
+  - the visible discount lines for particular and FTCheq
+- Reworked `Particular` so the bot now confirms typo-tolerant matches before continuing:
+  - if the typed medicine is close but not exact, the bot asks `¿Quisiste decir ...?`
+  - the user can answer `Sí`, `No` or `Volver a escribir`
+- Replaced the unresolved live-stock copy again so customer-facing messages now say `A confirmar` instead of `sin confirmacion en este momento`.
+- Added automated coverage for:
+  - similarity suggestion acceptance
+  - similarity suggestion rejection and rewrite
+  - direct-vs-suggested product matching in `product_discount_catalog.test.js`
+- Completed a 10-iteration production validation pass after the change, covering:
+  - main menu
+  - delivery submenu
+  - exact `Particular` lookup
+  - similarity confirmation
+  - similarity rejection
+  - guided `Vacunas` lookup
+  - `Vacunas` summary
+  - `Obra Social`
+  - `Mostrador`
+- Live validation now includes stock cases where Plex resolved correctly through the bot:
+  - `ACTRON 600 RAPIDA ACCION caps.gelat.blanda x 10` returned `disponible` with `Stock Delko 1: 9 cajas`
+  - `ACTRON caps.gelat.blanda x 10` returned `sin stock`
+- Reworked `Particular` again so it no longer auto-selects from live Plex results:
+  - free text now opens a selectable list of live Delko 1 products
+  - long result sets paginate inside the WhatsApp list
+  - the user always gets `Volver a escribir`, `Contactar asesor` and `Volver`
+- Hardened the live search logic for `Particular`:
+  - generic categories like `shampoo` now produce real system options
+  - brand searches like `Dove` and `Rexona` now stay in selection mode
+  - whole-token / prefix filtering prevents substring false positives such as `Dove -> ENDOVENOSA`
+  - the final stock/price lookup now respects the exact product chosen from the list instead of re-searching a different one
+- Added automated coverage for:
+  - live option search with category and false-positive filtering in `pharmacy_system_lookup.test.js`
+  - selected-product lookup preservation in `pharmacy_system_lookup.test.js`
+  - list-first `Particular` flow, advisor escalation and no-results handling in `conversation_rules.test.js`
+  - stricter local search-vs-suggestion behavior in `product_discount_catalog.test.js`
+- Redeployed production after the list-selection refactor and reran controlled live traces on the QA contact.
+- Production traces now confirm:
+  - `un shampoo` opens a paginated list of shampoo products
+  - `Dove` returns only Dove-family options and no `ENDOVENOSA`
+  - `Rexona` no longer jumps directly to a product summary
+  - `Monjaro 5 kwipen` still triggers `¿Quisiste decir ...?`
+  - `zzq producto inexistente` now offers rewrite or advisor
+  - `ACTRON 600 RAPIDA ACCION caps.gelat.blanda x 10` still returns `disponible` with `Stock Delko 1: 9 cajas`
+  - `MOUNJARO 5 mg/0.6 mLx1 KwikPen` still returns `A confirmar`
+  - `Mostrador`, `Obra Social` and `Vacunas` remain stable after the `Particular` rework
+- Residual note after the new stricter search path:
+  - a fresh live `sin stock` case was not re-confirmed through the new list-first path during this pass
+  - previously validated `sin stock` evidence remains in project memory, while current production traces reconfirmed `disponible` and `A confirmar`
+
+## 2026-04-08
+- Reworked the order flow from single-item confirmation to a real multi-item cart:
+  - after each selected product, the bot now asks whether to `Agregar algo mas` or `Terminar compra`
+  - users can keep writing additional products from the same conversation without restarting the order
+- Added checkout persistence for delivery users:
+  - captured fields: nombre, apellido, mail, direccion, entre calles, barrio
+  - stored the delivery profile by WhatsApp number in the existing profile/KV persistence path
+  - returning delivery users are now offered their saved address with:
+    - `Usar esta direccion`
+    - `Otra direccion`
+    - `Volver`
+- Reworked the visible end-of-order summary:
+  - shows all selected products
+  - shows total list price
+  - shows aggregated discount totals
+  - shows available payment forms
+  - shows delivery data when the mode is `Delivery`
+  - closes with human handoff copy instead of a bare single-product confirmation
+- Added automated coverage for the new flow:
+  - multi-item delivery checkout
+  - persisted delivery profile reuse on the same phone number
+  - updated previous summary/recetario expectations to the new review-step behavior
+- Updated the flow catalog so the visible workflow now reflects:
+  - cart review
+  - extra product input
+  - saved-address decision
+  - delivery data capture
+  - final checkout close
+- Deployed the new checkout flow to production and validated two controlled live runs on the QA contact:
+  - full multi-item order:
+    - `MENU -> Delivery -> Particular -> Mounjaro -> No -> Agregar algo mas -> DUTIDE -> No -> Terminar compra`
+    - then captured `Nicolas / San Marco / nico@test.com / Av. Siempre Viva 123 / Belgrano y Mitre / Centro`
+    - production returned the final summary with both products, total list price, discount totals and payment forms
+  - saved-address reuse:
+    - on a second order from the same QA number, after `Terminar compra` the bot offered the previously saved delivery address instead of asking the fields again
+- Reworked the cart close so `Recetario Solidario` is now asked once at the end of the order instead of once per product:
+  - item review stays focused on `Producto`, `Stock`, `Precio`
+  - `Terminar compra` now leads to the final recetario prompt
+  - after recetario, delivery data capture / saved-address reuse continues as before
+- Reworked delivery data capture so the bot now asks for all delivery fields in a single message block:
+  - prompt format: nombre, apellido, mail, direccion, entre calles, barrio
+  - the parser still tolerates sequential one-by-one replies as a fallback so active users do not get stuck
+- Added a global outbound sanitization layer in `conversation_rules_v2.js` to repair mojibake before sending WhatsApp text or interactive titles:
+  - fixed visible issues such as `RevisÃ¡`, `Â¿QuerÃ©s`, `SÃ­`
+  - automated tests now assert that customer-facing actions do not leak `Ã` or `Â`
+- Updated automated coverage for the new order of steps:
+  - `Vacunas` now finishes in `Agregar algo mas / Terminar compra` before recetario
+  - `Particular` now moves from selectable product -> item review -> final recetario
+  - saved-address reuse now happens after the final recetario answer
+- Redeployed production after the flow/copy hardening and verified:
+  - `npm test` passed `47/47`
+  - `/health` returned `{"ok":true,"ready":true}`
+  - `/api/system/ready` returned `ok: true` with Plex Center ready for branch `1`
+- Hardened commercial pricing/detail for general Plex products:
+  - products that come live from Plex but are not mapped in the temporary local catalog now still show the base `Particular` discount scenarios from the live price
+  - this closes the missing-discounts gap detected on generic products such as shampoo and jabon
+- Reworked the visible review/final summary so the human advisor gets a more invoice-ready handoff:
+  - item review now shows discount options for the selected product
+  - final summary now includes:
+    - product by product detail
+    - stock
+    - live price
+    - payment-modality amounts
+    - order totals
+    - payment forms
+    - delivery/contact data
+- Added automated coverage for the new pricing/detail rules:
+  - generic Plex product discount math in `product_discount_catalog.test.js`
+  - generic-product lookup copy in `conversation_rules.test.js`
+  - richer final summary output in `conversation_rules.test.js`
+- Revalidated the suite after this change:
+  - `npm test` passed `50/50`
+  - a local controlled output check confirmed the new shampoo summary now includes the live price plus `Particular` amounts for efectivo/transferencia, debito y credito
+- Tightened generic-search tolerance in Plex option lookup:
+  - small typos in generic category queries are now tolerated when the textual intent is still clear
+  - covered example: `un shamppo` now resolves to shampoo options instead of the no-results fallback
+  - the matcher keeps strong token anchors so unrelated matches like `Dove -> ENDOVENOSA` stay blocked
+- Revalidated the suite after the typo-tolerance change:
+  - `npm test` passed `51/51`
+  - automated coverage now includes the typo-tolerant generic-search case in `pharmacy_system_lookup.test.js`
+- Hardened visible currency formatting for WhatsApp:
+  - customer-facing amounts now use plain `$ 27.017,76` formatting instead of Unicode non-breaking spaces
+  - the outbound sanitization layer now also strips additional invisible spacing characters that could render as `�`
+- Revalidated after the currency-format fix:
+  - `npm test` stayed green at `51/51`
+  - lookup copy assertions now explicitly reject hidden currency-spacing characters and replacement glyphs
+- Simplified delivery capture UX for less technical / older users:
+  - removed the long copy-and-complete template block
+  - the bot now asks in two simple steps:
+    - `nombre + apellido + mail`
+    - `dirección + entre calles + barrio`
+  - both steps accept natural free-form replies, including comma-separated or multi-line text
+  - saved-address reuse remains active; if the user wants another address, the bot now asks only the address block
+- Revalidated after the delivery UX simplification:
+  - `npm test` stayed green at `51/51`
+  - local controlled trace confirmed the new visible prompts:
+    - `Pasame en un solo mensaje el nombre, el apellido y el mail.`
+    - `Ahora pasame en un solo mensaje la dirección, entre calles y barrio.`
+- Hardened the recipe-upload steps for `Mostrador` and `Obra Social`:
+  - if the customer writes plain text instead of sending media, the bot now insists on `receta en foto o PDF`
+  - it stays in the same recipe-upload step and keeps `Volver` available
+  - this removes the confusing generic fallback when the real blocker is still the missing receta
+- Revalidated after the recipe-step hardening:
+  - `npm test` passed `53/53`
+  - new automated coverage validates the insistence behavior in both `Mostrador` and `Obra Social`
+- Added a new explicit search-mode step to `Particular`:
+  - first asks `Buscar por droga` or `Buscar por nombre`
+  - `Buscar por nombre` keeps the existing live Plex option-list flow
+  - `Buscar por droga` now resolves against a generated local snapshot of Plex drugs/products and then performs the final live lookup only on the chosen product
+- Added `apps/whatsapp-bot-node/scripts/generate_plex_drug_snapshot.js` and generated `apps/whatsapp-bot-node/src/plex_drug_search_snapshot.json` from live Plex data:
+  - `3893` drogas
+  - `44345` productos
+  - `2166` grupos con productos
+- Hardened the drug search so accessory tokens like `mg`, `ml` or numeric strengths do not block the match when the active ingredient is clear.
+- Updated the visible flow catalog so the client map now includes `Modo de busqueda` before the free-text `Particular` step.
+- Revalidated after the drug-search release:
+  - `npm test` passed `56/56`
+  - added automated coverage for:
+    - `Buscar por droga` in the conversation flow
+    - snapshot-backed drug search without hitting live fetch during tests
+    - ignoring accessory dosage/unit tokens in drug mode
+- Redeployed production after the change:
+  - `https://whatsapp-bot-node-chatbot1.vercel.app/health` returned ready
+  - `https://whatsapp-bot-node-chatbot1.vercel.app/api/system/ready` stayed `ok: true`
+  - Meta webhook callback sync remained pointed to the production alias
+- Current known residuals after this release:
+  - webhook signature hardening is still not fully enforced because `WHATSAPP_APP_SECRET` remains pending in production
+  - Plex stock pagination remains the external cause of many `A pedido`
+- Added customer-history and quick-reorder support for `Particular`:
+  - if the same WhatsApp number already has products in `lastOrder`, the bot now offers a quick reorder list before the search-mode selector
+  - selecting a previous product triggers a fresh live Plex lookup before adding it to the cart
+  - `lastOrder` persistence was expanded to store detailed item metadata, not just product titles
+- Reworked the visible stock copy:
+  - unresolved stock now says `A pedido`
+  - confirmed `sin stock` cases can now surface alternatives of the same drug for customer review and advisor follow-up
+- Updated the client-facing flow map so the visible order is now:
+  - lookup -> revision item -> recetario solidario -> address reuse / delivery data -> resumen final
+- Revalidated after the reorder/alternatives update:
+  - `npm test` passed `58/58`
+  - new automated coverage now includes:
+    - saved-customer quick reorder in `Particular`
+    - same-drug alternatives when Plex confirms `sin stock`
+- Updated the Plex stock adapter on 2026-04-09 after Galbop shared the corrected pagination contract:
+  - stock now calls `/wsplexcenter/stock?sucursal=1&paginanro=X&paginacant=Y`
+  - `.env.example` now documents `PHARMACY_SYSTEM_API_STOCKS_PER_PAGE`
+  - customer-facing fallback copy for stock system failures now stays on `A pedido`
+- Revalidated after the stock adapter update:
+  - `npm test` passed `60/60`
+  - live credential checks confirmed:
+    - page `1`, `2` and `5` now return distinct content instead of repeating page `1`
+    - `MOUNJARO 5 mg/0.6 mLx1 KwikPen` now resolves with `Stock: 20 cajas.`
+    - `DUTIDE 1 mg jer. prell. x 4` now resolves with `Stock: sin stock.`
+    - `ACTRON 600 RAPIDA ACCION caps.gelat.blanda x 10` still resolves with confirmed stock
+  - a second external limitation remains in Plex:
+    - pages `7` to `10` currently answer `403 Forbidden`
+    - products that fall beyond those accessible pages, such as `CLOB-X SHAMPOO 0.05% shamp.x 125 ml`, still need to stay in `A pedido` until Galbop fixes the higher-page access
+  - updated vendor reference file added to the repo:
+    - `API_OnzeCenter_Documentacion_Actualizada.pdf`
+- Fixed a delivery parsing edge case on 2026-04-09:
+  - when the customer sent an address block missing only `barrio`, the next short reply such as `Recoleta` was being reinterpreted as a new `dirección`
+  - the parser now fills only the missing field and preserves the address/cross streets already captured
+  - `npm test` passed `61/61` after the fix
+  - automated coverage added for the exact path:
+    - `Coronel Díaz, CABA, entre Soler y Paraguay`
+    - bot asks for `barrio`
+  - `Recoleta`
+  - final summary keeps the original address and adds the neighborhood correctly
+- Hardened Unicode handling in the checkout summary on 2026-04-09:
+  - fixed active summary functions that still contained old mojibake literals such as `SÃ­` / `Â¿Querés`
+  - changed the outbound sanitizer to repair mojibake fragments without re-decoding the full message, so valid customer text is no longer corrupted
+  - explicit Unicode validation now covers customer-entered delivery data like:
+    - `Nicol\u00e1s`
+    - `Coronel D\u00edaz`
+  - full suite remained green at `61/61`
+
+- Added client-friendly conversation labels and combined filters to the audit board on 2026-04-09:
+  - new helper module `apps/whatsapp-bot-node/src/conversation_audit_tags.js`
+  - audit stores now derive simple visible tags from conversation context while preserving technical tags internally
+  - `Vacunas` is now grouped in the board as `Programa obesidad y diabetes`
+  - `/api/conversations` now supports comma-separated `tag` filters with AND semantics
+  - `/conversations` now shows:
+    - `Delivery / Mostrador`
+    - `Programa obesidad y diabetes / Particular / Obra social`
+    - visible tag chips in the conversation cards and detail
+- Revalidated after the audit/dashboard tagging update:
+  - `npm test` passed `65/65`
+  - production was redeployed through `npm run deploy:prod`
+  - webhook sync remained pointed to `https://whatsapp-bot-node-chatbot1.vercel.app/webhook`
+  - production `/conversations` served the new filter controls
+  - production `/api/conversations?tag=delivery,particular` answered `200`
+- Added service-category labels inside the WhatsApp conversation on 2026-04-09:
+  - the `Delivery` submenu no longer shows `Vacunas` as the visible option
+  - the row now renders as:
+    - `Programa obesidad`
+    - `y diabetes`
+  - after the customer chooses a category, the very next bot prompt now starts with the branch label in the chat itself:
+    - `Particular`
+    - `Programa obesidad y diabetes`
+    - `Obra social`
+    - `Mostrador`
+  - this was added so the pharmacy can identify the case directly from the open WhatsApp thread
+- Added the WhatsApp Web companion layer on 2026-04-09:
+  - implemented `apps/whatsapp-bot-node/src/whatsapp_web_companion.js` to expose a sanitized operational feed for browser overlays
+  - added `/api/companion/conversations` in production
+  - created the unpacked extension in `apps/whatsapp-web-companion-extension` with:
+    - `manifest.json`
+    - `background.js`
+    - `content.js`
+    - `styles.css`
+    - popup/options pages
+  - the extension overlays a floating filter panel and visible chips inside `https://web.whatsapp.com`
+  - intended operating model:
+    - keep the official Cloud API backend
+    - avoid unsupported native-label promises
+    - keep pharmacy staff inside WhatsApp Web with segmentation visible on screen
+  - production validation confirmed:
+    - `npm test` passed `68/68`
+    - `npm run deploy:prod` completed successfully
+    - production `GET /api/companion/conversations?limit=5` returned `200`
+    - payload exposed real conversation counts and client-facing filter groups
+- Fixed the production conversation board on 2026-04-09:
+  - root cause was a frontend syntax error in the embedded `/conversations` script, not missing database data
+  - repaired the broken quoted strings used in timeline descriptions
+  - added `apps/whatsapp-bot-node/src/conversation_dashboard.test.js` so the rendered script is compiled in tests
+  - added live auto-refresh to `/conversations` every `12s`
+  - redeployed production and validated with Playwright:
+    - page status moved to `Detalle actualizado`
+    - `100` conversation cards rendered from production data
+    - first conversation detail loaded correctly
+- Fixed historical tag filtering on 2026-04-09:
+  - root cause was a PostgreSQL write-path bug: `flow_transition` updates were not preserving the modified conversation context/tags when saving the next event
+  - added `apps/whatsapp-bot-node/src/conversation_audit_inference.js` so old conversations can be reclassified from their stored `flow_transition` events
+  - patched `apps/whatsapp-bot-node/src/conversation_audit_postgres_store.js` so new conversations keep the tags at write time
+  - production validation confirmed:
+    - `GET /api/conversations?tag=programa_obesidad_y_diabetes` returned historical conversations
+    - the visual board showed cards with chips like `Delivery` and `Programa obesidad y diabetes`
+    - the detail panel showed `Etiquetas: Delivery · Programa obesidad y diabetes`
+- Strengthened visual tag hierarchy on 2026-04-09:
+  - `/conversations` now renders the tags above the customer name with color coding by category/mode
+  - the detail summary mirrors the same prominent chips
+  - the WhatsApp Web companion extension was updated to use the same stronger visual hierarchy and tag colors
+  - production validation confirmed:
+    - filtered board still rendered correctly
+    - `Programa obesidad y diabetes` cards showed the prominent chips above the customer name
+- Reworked the `/conversations` detail panel on 2026-04-09 into a WhatsApp-like transcript:
+  - removed the audit-style cards with labels like `Mensaje del cliente` / `Respuesta del sistema` / `Avance del caso`
+  - added a chat-style header with contact initials, name, phone, status and visible tags
+  - customer messages now render on the right and pharmacy/bot messages on the left
+  - interactive buttons/lists now render as chat option cards instead of technical descriptions
+  - only meaningful operational notes remain centered, such as human handoff or inactivity auto-close
+  - production validation through Playwright confirmed the live board now reads like a WhatsApp Web conversation
+
 ## Maintenance rule
 After every major product change, update:
 1. `docs/PROJECT_MEMORY.md`
 2. `persistence/context_snapshot.json`
 3. this `persistence/session_history.md`
+
+## 2026-04-10
+- Performed a full repo/runtime integrity check after cross-agent edits.
+- Detected hard runtime breakage:
+  - multiple required modules were missing from `apps/whatsapp-bot-node/src`
+  - local tests failed with `Cannot find module './conversation_rules_v2'`
+  - production alias returned `FUNCTION_INVOCATION_FAILED` on key endpoints
+- Identified root cause:
+  - critical source files were still available only inside `stash@{0}` as untracked entries (`stash@{0}^3`)
+- Recovered missing architecture files from stash:
+  - conversation rules/runtime modules (`conversation_rules_v2`, `pharmacy_system_lookup`, `runtime_readiness`, `webhook_security`, `inactivity_cron`, etc.)
+  - audit helpers (`conversation_audit_formatters`, `conversation_audit_tags`, `conversation_audit_inference`, `conversation_audit_preview`)
+  - companion API module and extension assets (`apps/whatsapp-web-companion-extension/*`)
+  - supporting scripts and operational docs (`deploy_and_sync_webhook.js`, API PDF, Postman collection, product docx)
+- Patched `apps/whatsapp-bot-node/scripts/deploy_and_sync_webhook.js` so Vercel deploy runs from monorepo root when needed and no longer duplicates `apps/whatsapp-bot-node` in the path.
+- Validation after recovery:
+  - `npm test` passed `72/72`
+  - local bootstrap check passed (`WhatsApp bot listening on port 3000`)
+- Redeployed production successfully with Vercel CLI and verified:
+  - `/health` -> `200` and `ready: true`
+  - `/api/system/ready` -> `200` and `ok: true`
+  - `/api/conversations?limit=2` -> `200` with live records
+  - `/api/companion/conversations?limit=5` -> `200` with operational payload
+- Post-recovery blocker found:
+  - webhook sync script currently fails due expired Meta access token (`OAuthException 190 / subcode 463`)
+
+## 2026-04-11
+- Completed transition from Meta Cloud API webhooks to local whatsapp-web.js execution for WhatsApp Web coexistence.
+- Replaced interactive WhatsApp Buttons and Lists with text-based fallback menus due to Meta Web protocol limitations.
+- Implemented numerical text matching across conversation rule parsers allowing users to type '1', '2', etc. to navigate menus.
+- Resolved duplicate parsing function hoist issues, ensuring numerical shortcuts work uniformly across 'mode', 'service type', and 'particular option' selectors.
+- Generated whatsapp_button_emulation_research.md detailing the structural reasons behind Meta's deprecation of interactive messages in Web protocols and viable alternatives.
+
+## 2026-04-12
+- Confirmed an operational caveat of `connected_browser` mode:
+  - if the remote Chrome / WhatsApp Web tab used by the bot is closed, inbound automation stops even if `node src/index.js` stays alive
+  - the correct recovery command is:
+    - `powershell -ExecutionPolicy Bypass -File apps/whatsapp-bot-node/scripts/restart_whatsapp_lab.ps1`
+- Fixed a restart regression in `apps/whatsapp-bot-node/src/whatsappClient.js`:
+  - the connected-browser bootstrap was only treating `UNPAIRED`, `UNPAIRED_IDLE` and `OPENING` as stable socket states
+  - after a clean restart with an already logged-in WhatsApp Web page, the socket state is `CONNECTED`
+  - the bot now accepts `CONNECTED` as stable and can reattach without hanging
+- Revalidated after the fix:
+  - remote debug browser restored on `http://127.0.0.1:9222`
+  - `/api/system/ready` again reports:
+    - `services.whatsapp.ready=true`
+    - `authenticated=true`
+  - `npm test` passed `77/77`
+- Investigated why fresh customer messages still appeared in WhatsApp Web without bot response:
+  - confirmed the chat from the test sender was present in the logged-in browser and unread
+  - confirmed recent inbound messages are stored internally with `@lid` identities, not only `@c.us`
+  - confirmed `whatsapp-web.js` realtime `message` events can stay silent even with an authenticated reattached browser session
+- Added a fallback inbound path in `apps/whatsapp-bot-node/src/index.js`:
+  - keep the realtime listeners (`message`, `message_create`)
+  - add a periodic poll over `window.Store.Msg.getModelsArray()` for recent inbound messages
+  - normalize web contact identities so `@lid` senders are preserved correctly
+- Revalidated after this fallback:
+  - local tests still passed `77/77`
+  - pending live step is now a brand-new inbound message sent after the restart, so the new poller can process it
+- Continued hardening the connected-browser lab on 2026-04-12:
+  - added local-only developer validation endpoints in `apps/whatsapp-bot-node/src/index.js`:
+    - `POST /api/dev/whatsapp/send-test`
+    - `POST /api/dev/whatsapp/backfill-unread`
+    - `POST /api/dev/whatsapp/simulate-inbound`
+  - improved `apps/whatsapp-bot-node/src/whatsappClient.js` so already-synced WhatsApp Web sessions trigger the post-sync path manually
+  - tolerated partial `wwebjs` listener incompatibilities during manual post-sync when `Store` and `WWebJS` are already injected and usable
+  - patched `apps/whatsapp-bot-node/src/webTextClient.js` to send with `sendSeen: false`, avoiding current WhatsApp Web crashes around `markedUnread`
+  - added a compatibility shim for `window.Store.User.getMaybeMeUser` when the current Web build only exposes `getMeUser`
+- Real validation completed on the lab chat:
+  - `POST /api/dev/whatsapp/send-test` returned `ok:true` and delivered `Prueba tecnica backend 0125` to the real chat `199303830229137@lid`
+  - `POST /api/dev/whatsapp/simulate-inbound` with `Menu` recorded a successful outbound:
+    - `¿Cómo querés continuar?`
+  - `POST /api/dev/whatsapp/simulate-inbound` with `1` advanced the open conversation:
+    - from idle menu
+    - to `service_type`
+    - with outbound `Elegí una opción.`
+  - `/api/conversations` confirmed the latest open case now shows:
+    - `currentState: order`
+    - `currentStep: service_type`
+    - preview text `Elegí una opción.`
+- Full suite after the latest web-mode patches:
+  - `npm test` passed `77/77`
+- Continued hardening the local web runtime for speed and reliability:
+  - added configurable timing knobs in `apps/whatsapp-bot-node/src/config.js` for:
+    - fast poll cadence
+    - healthy-bridge backup poll cadence
+    - bridge reconcile cadence
+    - incoming lookback window
+  - detached inbound/outbound audit writes from the visible reply path in local `web` mode inside `apps/whatsapp-bot-node/src/index.js`
+  - added startup/auth/ready prewarming for:
+    - `getBotMode()`
+    - `getChatbotRuntimeConfig()`
+  - added an always-on slow fallback poll even when the native bridge is healthy, so silent bridge regressions do not make real customer messages disappear
+  - hardened runtime state/config persistence with short local timeout guards and warm caches in:
+    - `apps/whatsapp-bot-node/src/conversation_rules_v2.js`
+    - `apps/whatsapp-bot-node/src/workflow_store.js`
+    - `apps/whatsapp-bot-node/src/bot_mode_store.js`
+  - added a short failure cooldown circuit in `apps/whatsapp-bot-node/src/pharmacy_system_lookup.js` so repeated Plex/generic API failures stop penalizing chat latency
+- Performance validation after the hardening:
+  - first cold conversational turn after restart dropped to about `657 ms`
+  - warm conversational turns now stay around `18-52 ms`
+  - direct real outbound validation against the live lab chat succeeded around `324 ms`
+  - `npm test` now passes `78/78`
+- Repo hygiene on 2026-04-12:
+  - removed temporary WhatsApp lab scripts from `apps/whatsapp-bot-node/` (`tmp-*`, `test-inject.js`, `test-puppeteer.js`)
+  - kept only the permanent operational scripts:
+    - `start_whatsapp_remote_browser.ps1`
+    - `restart_whatsapp_lab.ps1`
+- Tooling update:
+  - installed the curated market skill `playwright-interactive` into local Codex skills for future browser-level debugging of WhatsApp Web
+- Root-cause analysis of the broken real chat observed on 2026-04-12:
+  - the business flow itself was still the intended one
+  - the visible chaos came from runtime coordination issues in the lab:
+    - recent historical inbound messages from the same test chat were replayed on reconnect and processed as if they were fresh
+    - near-simultaneous identical inbound texts such as repeated `Hola` could trigger duplicate replies
+  - this is why the user saw:
+    - a greeting
+    - then the flow apparently jumping ahead
+    - then repeated recipe prompts
+- Fixes applied after that investigation:
+  - `apps/whatsapp-bot-node/src/index.js` now seeds existing recent inbound message IDs before installing the native WhatsApp Web bridge, preventing backlog replay after reconnect
+  - `apps/whatsapp-bot-node/src/conversation_rules_v2.js` now keeps a short duplicate-fingerprint window per contact/text to suppress repeated near-simultaneous inbound intents
+  - added local lab endpoint:
+    - `POST /api/dev/whatsapp/reset-contact-state`
+    - clears session/profile state for the chosen contact so the next `Hola` starts the flow cleanly again
+- Validation after the fix:
+  - reset state for the test chat `199303830229137@lid`
+  - a clean simulated `Hola` now returns the expected start:
+    - `Hola Nico, somos Farmacia Delko.`
+    - `¿Cómo querés continuar?`
+  - automated suite remained green and increased to `79/79`
+- Live credentials wiring on 2026-04-12:
+  - loaded the official Plex Center live credentials from the project documentation into `apps/whatsapp-bot-node/.env.local`
+  - kept Delko constrained to branch `1`
+  - restarted the connected-browser WhatsApp lab with the new environment
+  - local readiness now reports:
+    - `ok: true`
+    - `pharmacyLookup.ready: true`
+    - `pharmacyLookup.mode: plex_center_api`
+  - direct live API validation succeeded:
+    - `/wsplexcenter/sucursales` returned Delko branches correctly
+  - functional local lookup validation also succeeded:
+    - `searchProductOptions("Actron 600")` returned live options
+    - selected lookup resolved `ACTRON 600 RAPIDA ACCION caps.gelat.blanda x 10`
+    - stock note returned `Stock: 6 cajas.`
+- UX and stability pass on 2026-04-12:
+  - aligned all WhatsApp Web menus to the simpler fallback style for real users:
+    - bold letter choices (`A`, `B`, `C`)
+    - explicit line `Respondé con la letra de la opción`
+  - added a new restart navigation action:
+    - `Comenzar nuevamente desde el inicio`
+    - unlike `Volver al inicio`, this returns to the initial greeting (`Hola..., somos Farmacia Delko`)
+  - fixed mojibake in the delivery prompts and summary text
+  - fixed delivery address parsing when the person sends:
+    - dirección on line 1
+    - entre calles on line 2
+    - barrio on line 3
+  - reformatted the final summary:
+    - bold section headings with separators
+    - plain-text email formatting (non-clickable)
+  - added outbound dedupe protection in WhatsApp Web transport to stop short duplicate bursts during reconnect edge cases
+  - expanded tests and revalidated:
+    - `82/82` passing
+  - lab runtime revalidated after restart:
+    - `/health` -> `ok: true`
+    - `/api/system/ready` -> `ok: true`
+    - WhatsApp session stayed authenticated in `web` mode
+- Native labels migration on 2026-04-12:
+  - the temporary inline tag overlay in WhatsApp Web was no longer accepted because it looked pasted on top of the list and could interfere with chat clicks
+  - the project moved to native WhatsApp Business labels as the primary operational tagging mechanism
+  - added module:
+    - `apps/whatsapp-bot-node/src/whatsapp_web_native_labels.js`
+  - added native-label bootstrap/status endpoints for lab operations
+  - created native labels in the live Business Web lab:
+    - `Delivery`
+    - `Mostrador`
+    - `Particular`
+    - `Programa obesidad y diabetes`
+    - `Obra social`
+    - `Prueba`
+  - validated that the chat `Nico 2` now carries the native labels:
+    - `Delivery`
+    - `Programa obesidad y diabetes`
+  - validated native label counts directly in WhatsApp Business store data:
+    - `Delivery` -> `1`
+    - `Programa obesidad y diabetes` -> `1`
+  - confirmed the old overlay was removed from the DOM:
+    - `overlayCount: 0`
+
+- Runtime root-cause hardening on 2026-04-12:
+  - fixed the real replay/loop bug in the WhatsApp Web runtime by canonicalizing one logical contact across:
+    - `@lid`
+    - `@c.us`
+    - bare-number variants
+  - `apps/whatsapp-bot-node/src/whatsapp_runtime_utils.js` now builds inbound queue keys from the bare logical ID, not the suffixed raw ID
+  - mixed-variant backlog pruning now drops old queued messages correctly when a fresh reset intent appears
+  - `apps/whatsapp-bot-node/src/index.js` now clears inbound runtime tracking across all contact variants when `MENU` or `Hola` resets the flow
+  - same-second follow-up messages are no longer discarded after reset:
+    - this fixed the case where `MENU` + immediate `A` made the user feel they had to type the first option twice
+  - live validation completed after the hardening:
+    - the lab chat `Nico 2` restarted cleanly with the expected start menu
+    - inline label names reappeared in the left chat list as:
+      - `Delivery | Programa obesidad y diabetes`
+    - native labels on the same chat were confirmed live in WhatsApp Business
+    - advisor closure simulation with:
+      - `Damos por cerrada la operación.`
+      - was handled successfully and sent the warm automatic farewell
+  - automated validation after the root-cause fix:
+    - targeted runtime tests passed
+    - conversation tests passed
+    - full suite now passes `104/104`
+
+- Runtime monotonic-reset fix and restart hardening on 2026-04-13:
+  - identified the strongest remaining runtime bug:
+    - `MENU` / `Hola` could clear queue state and then reuse the same inbound processing generation
+    - older running tasks were therefore still able to emit stale prompts or advisor-review notices
+  - fixed in `apps/whatsapp-bot-node/src/index.js`:
+    - `clearInboundTrackingForContact()` now invalidates the processing generation monotonically instead of deleting it
+    - reset flows now reuse the invalidated generation instead of bumping from a recycled zero state
+  - aligned runtime reset intent detection in `apps/whatsapp-bot-node/src/whatsapp_runtime_utils.js` with the conversational layer:
+    - `inicio`
+    - `opciones`
+    - `comenzar nuevamente`
+    - `comenzar de nuevo`
+    - `reiniciar`
+    - `reinicio`
+    - `buen día`
+    - `buenas tardes`
+    - `buenas noches`
+  - added dedicated runtime tests in `apps/whatsapp-bot-node/src/index.runtime.test.js`
+    - invalidation no longer recycles old generations
+    - reset checkpoint keeps the current reset message valid
+  - companion/browser hardening:
+    - `start_whatsapp_remote_browser.ps1` now loads the companion extension by default unless explicitly disabled
+    - `apps/whatsapp-web-companion-extension/content.js` avoids duplicating left/header label-name chips when backend inline labels are already present
+  - reinstalled local operator tooling:
+    - desktop shortcut refreshed: `Farmacia Delko Bot.lnk`
+    - Startup watchdog shortcut refreshed in Windows Startup folder
+    - silent launcher executed successfully
+  - validation after this pass:
+    - `npm test` -> `106/106`
+    - local `/health` -> `ok:true`, `ready:false`
+    - local `/api/system/ready` -> WhatsApp `awaitingScan:true`
+  - current operational note:
+    - code fixes are in place and the local background bot stack is running
+    - a fresh QR rescan is still required to restore the live WhatsApp Web session before doing the next physical chat validation
+
+- Final advisor handoff control and closure recovery on 2026-04-13:
+  - implemented a new explicit advisor-handoff state for the checkout summary:
+    - after the final summary, the bot no longer reopens the purchase flow if the customer writes again
+    - instead it answers only:
+      - `Te pedimos paciencia, por favor, en breve un asesor se va a comunicar por este medio para terminar la compra.`
+  - once the advisor writes manually from the pharmacy side:
+    - the bot now stays silent in that chat
+    - human intervention becomes the active owner of the conversation
+  - closure detection was expanded to include:
+    - `finalizado/finalizada`
+    - `terminado/terminada`
+    - `cerrado/cerrada`
+  - when the advisor writes a closure phrase, the bot now:
+    - sends the warm farewell automatically
+    - removes the pending advisor hold
+    - applies the native label `Finalizado`
+  - if the customer writes again later, the chat returns to the normal automated start
+  - implementation touched:
+    - `apps/whatsapp-bot-node/src/conversation_rules_v2.js`
+    - `apps/whatsapp-bot-node/src/index.js`
+    - `apps/whatsapp-bot-node/src/advisor_closure_detection.js`
+    - `apps/whatsapp-bot-node/src/conversation_audit_tags.js`
+    - `apps/whatsapp-bot-node/src/config.js`
+  - test coverage added/updated:
+    - `apps/whatsapp-bot-node/src/conversation_rules.test.js`
+    - `apps/whatsapp-bot-node/src/advisor_closure_detection.test.js`
+  - validation after this pass:
+    - `npm test` -> `108 pass / 2 skip / 0 fail`
+    - local `/health` -> `ok:true`
+    - local `/api/system/ready` -> `ok:true`
+    - WhatsApp Web session restored:
+      - `transport=web`
+      - `authMode=connected_browser`
+      - `authenticated=true`
+      - `sessionReady=true`
+
+- Advisor handoff variant-resolution fix on 2026-04-14:
+  - confirmed a real edge case after checkout:
+    - the bot correctly stored `waitingAdvisor=true` after the final summary
+    - but manual advisor intervention and closure could fail if the event arrived on a different WhatsApp id variant (`@c.us` vs `@lid`) while the runtime state was `idle`
+  - fixed in `apps/whatsapp-bot-node/src/index.js`:
+    - new helper `hasManagedRuntimeConversationState(...)`
+    - `resolveConversationContactId(...)` now recognizes `idle + waitingAdvisor` as an active managed chat
+    - `handleAdvisorHumanOutgoingMessage(...)` and `handleAdvisorClosureCandidate(...)` now honor that state
+  - added explicit regression coverage in `apps/whatsapp-bot-node/src/index.runtime.test.js`:
+    - post-summary customer message receives patience notice
+    - once the advisor writes manually, the bot stays silent
+    - a pharmacy-side closure phrase restores the bot for the next customer message
+  - revalidated after restart:
+    - `node --test src/index.runtime.test.js` -> `15/15`
+    - `node --test src/conversation_rules.test.js` -> `41 pass / 2 skip`
+    - local runtime restarted cleanly
+    - `/health` -> `ok:true`
+    - `/api/system/ready` -> `ok:true`

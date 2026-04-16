@@ -20,14 +20,14 @@ test("flow engine resuelve rutas por routeKey, fallback y salida por defecto", (
   assert.equal(engine.resolveRoute("c", "go_d", "a"), "a");
 });
 
-test("flow engine ejecuta handler por nodo", () => {
+test("flow engine ejecuta handler por nodo", async () => {
   const engine = createFlowEngine({
     id: "wf_test",
     nodes: [{ id: "menu", kind: "ui" }],
     edges: []
   });
 
-  const result = engine.executeNode({
+  const result = await engine.executeNode({
     nodeId: "menu",
     handlers: {
       menu: () => ({
@@ -40,4 +40,3 @@ test("flow engine ejecuta handler por nodo", () => {
   assert.equal(Array.isArray(result.actions), true);
   assert.equal(result.actions[0].text, "ok");
 });
-

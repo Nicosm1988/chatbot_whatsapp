@@ -358,7 +358,7 @@ function renderConversationDashboard() {
         <select class="ctrl" id="q-category">
           <option value="">Todos los programas</option>
           <option value="particular">Particular</option>
-          <option value="programa_obesidad_y_diabetes">Programa obesidad y diabetes</option>
+          <option value="programa_obesidad_y_diabetes">Programa de sobrepeso y diabetes</option>
           <option value="obra_social">Obra social</option>
         </select>
         <select class="ctrl" id="q-tag">
@@ -494,7 +494,7 @@ function renderConversationDashboard() {
         delivery:"Delivery",
         mostrador:"Mostrador",
         particular:"Particular",
-        programa_obesidad_y_diabetes:"Programa obesidad y diabetes",
+        programa_obesidad_y_diabetes:"Programa de sobrepeso y diabetes",
         obra_social:"Obra social",
         test_run:"Prueba"
       };

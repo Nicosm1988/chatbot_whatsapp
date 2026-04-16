@@ -18,10 +18,30 @@ function jsonResponse(payload, ok = true) {
 
 async function withLookupModule(env, run) {
   const previousEnv = {};
-  const keys = Object.keys(env);
+  const managedKeys = [
+    "PHARMACY_SYSTEM_API_BASE_URL",
+    "PHARMACY_SYSTEM_API_USERNAME",
+    "PHARMACY_SYSTEM_API_PASSWORD",
+    "PHARMACY_SYSTEM_API_BRANCH_IDS",
+    "PHARMACY_SYSTEM_API_PRODUCTS_PER_PAGE",
+    "PHARMACY_SYSTEM_API_STOCKS_PER_PAGE",
+    "PHARMACY_SYSTEM_API_PRODUCT_SEARCH_PAGE_LIMIT",
+    "PHARMACY_SYSTEM_API_PRODUCT_OPTION_LIMIT",
+    "PHARMACY_SYSTEM_API_CACHE_TTL_MS",
+    "PHARMACY_SYSTEM_LOOKUP_URL_TEMPLATE",
+    "PHARMACY_SYSTEM_API_TOKEN",
+    "PHARMACY_SYSTEM_API_AUTH_HEADER",
+    "PHARMACY_SYSTEM_API_TIMEOUT_MS",
+    "PHARMACY_SYSTEM_API_FAILURE_COOLDOWN_MS"
+  ];
+  const keys = Array.from(new Set([...managedKeys, ...Object.keys(env)]));
   for (const key of keys) {
     previousEnv[key] = process.env[key];
-    process.env[key] = env[key];
+    if (Object.prototype.hasOwnProperty.call(env, key)) {
+      process.env[key] = env[key];
+    } else {
+      delete process.env[key];
+    }
   }
 
   delete require.cache[require.resolve(MODULE_PATH)];
@@ -403,6 +423,9 @@ test("expone estado listo cuando plex center esta configurado", async () => {
         genericApiConfigured: false,
         branchIds: ["1", "2"],
         productsPerPage: 20,
+        failureCooldownMs: 20000,
+        plexCircuitOpen: false,
+        genericCircuitOpen: false,
         fallbackMode: "document"
       });
     }
@@ -424,6 +447,9 @@ test("usa Delko 1 por defecto cuando no se define sucursal en env", async () => 
         genericApiConfigured: false,
         branchIds: ["1"],
         productsPerPage: 20,
+        failureCooldownMs: 20000,
+        plexCircuitOpen: false,
+        genericCircuitOpen: false,
         fallbackMode: "document"
       });
     }
@@ -832,6 +858,33 @@ test("si plex center falla vuelve al documento oficial", async () => {
   );
 });
 
+test("si plex acaba de fallar evita reintentar hasta que pase el cooldown", async () => {
+  await withLookupModule(
+    {
+      PHARMACY_SYSTEM_API_BASE_URL: "http://plex.example:8081",
+      PHARMACY_SYSTEM_API_USERNAME: "demo_user",
+      PHARMACY_SYSTEM_API_PASSWORD: "demo_pass",
+      PHARMACY_SYSTEM_API_BRANCH_IDS: "1,2",
+      PHARMACY_SYSTEM_API_FAILURE_COOLDOWN_MS: "20000"
+    },
+    async ({ lookupProductAvailability, getPharmacyLookupStatus }) => {
+      let attempts = 0;
+      global.fetch = async () => {
+        attempts += 1;
+        throw new Error("connect ECONNREFUSED");
+      };
+
+      const first = await lookupProductAvailability({ query: "Mounjaro 5 mg KwikPen" });
+      const second = await lookupProductAvailability({ query: "Mounjaro 5 mg KwikPen" });
+
+      assert.equal(first.source, "document_fallback");
+      assert.equal(second.source, "document_fallback");
+      assert.equal(attempts, 1);
+      assert.equal(getPharmacyLookupStatus().plexCircuitOpen, true);
+    }
+  );
+});
+
 test("si no hay api configurada informa fallback documental", async () => {
   await withLookupModule({}, async ({ getPharmacyLookupStatus }) => {
     assert.deepEqual(getPharmacyLookupStatus(), {
@@ -841,6 +894,9 @@ test("si no hay api configurada informa fallback documental", async () => {
       genericApiConfigured: false,
       branchIds: [],
       productsPerPage: null,
+      failureCooldownMs: 20000,
+      plexCircuitOpen: false,
+      genericCircuitOpen: false,
       fallbackMode: "document"
     });
   });

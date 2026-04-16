@@ -23,6 +23,7 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl --fail --silent --show-error --retry 3 --retry-all-errors \
+          response="$(curl --fail --silent --show-error --retry 3 --retry-all-errors \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "https://whatsapp-bot-node-chatbot1.vercel.app/api/cron/inactivity"
+            "https://whatsapp-bot-node-chatbot1.vercel.app/api/cron/inactivity")"
+          echo "$response"

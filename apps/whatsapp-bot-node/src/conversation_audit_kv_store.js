@@ -1,7 +1,18 @@
+const {
+  summarizeInboundMessage,
+  summarizeOutboundAction,
+  truncateText,
+  normalizeArray
+} = require("./conversation_audit_formatters");
+const { mergeConversationContextTags, buildSummaryFromContext } = require("./conversation_audit_tags");
+const { applyConversationPreview } = require("./conversation_audit_preview");
+
 const KV_REST_API_URL = String(process.env.KV_REST_API_URL || "").trim().replace(/\/+$/, "");
 const KV_REST_API_TOKEN = String(process.env.KV_REST_API_TOKEN || "").trim();
 const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
-const IS_PRODUCTION_RUNTIME = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+const IS_PRODUCTION_RUNTIME =
+  process.env.NODE_ENV === "production" ||
+  Boolean(process.env.VERCEL_URL || process.env.NOW_REGION || process.env.VERCEL_REGION);
 const AUDIT_ALLOW_MEMORY_FALLBACK = String(
   process.env.AUDIT_ALLOW_MEMORY_FALLBACK || (IS_PRODUCTION_RUNTIME ? "false" : "true")
 )
@@ -14,6 +25,7 @@ const DETAIL_EVENTS_LIMIT = Number(process.env.AUDIT_DETAIL_EVENTS_LIMIT || 250)
 const SUMMARY_SCAN_LIMIT = Number(process.env.AUDIT_SUMMARY_SCAN_LIMIT || 300);
 const KV_REQUEST_TIMEOUT_MS = Number(process.env.AUDIT_KV_TIMEOUT_MS || 3500);
 const KV_REQUEST_RETRIES = Number(process.env.AUDIT_KV_RETRIES || 1);
+const { stripInactivityPromptTag } = require("./inactivity_cron");
 const TEST_CONTACT_IDS = new Set(
   String(process.env.TEST_CONTACT_IDS || "")
     .split(",")
@@ -94,20 +106,9 @@ function conversationId() {
   return `conv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function normalizeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
 function pushUniqueAtStart(list, value, maxSize) {
   const next = [value, ...list.filter(item => item !== value)];
   return next.slice(0, maxSize);
-}
-
-function truncateText(value, max = 600) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
 }
 
 function normalizeForMatch(value) {
@@ -128,65 +129,10 @@ function isLikelyTestConversation({ contactId, contactName, inboundText }) {
   return normalized.includes("prueba") || normalized.includes("test") || normalized.includes("qa");
 }
 
-function summarizeInboundMessage(message, inboundText) {
-  const type = String(message?.type || (inboundText ? "text" : "unknown"));
-  const buttonId = String(
-    message?.interactive?.button_reply?.id ||
-      message?.button?.payload ||
-      message?.interactive?.list_reply?.id ||
-      ""
-  );
-  const text =
-    inboundText ||
-    message?.text?.body ||
-    message?.button?.text ||
-    message?.interactive?.button_reply?.title ||
-    message?.interactive?.list_reply?.title ||
-    message?.document?.caption ||
-    message?.image?.caption ||
-    "";
-
-  return {
-    type,
-    text: truncateText(text),
-    buttonId,
-    hasMedia: type === "image" || type === "document"
-  };
-}
-
-function summarizeOutboundAction(action) {
-  const type = String(action?.type || "unknown");
-  if (type === "text") {
-    return {
-      type,
-      text: truncateText(action?.text || "")
-    };
-  }
-  if (type === "interactive") {
-    return {
-      type,
-      text: truncateText(action?.text || ""),
-      buttons: normalizeArray(action?.buttons).map(button => ({
-        id: String(button?.id || ""),
-        title: truncateText(button?.title || "", 80)
-      }))
-    };
-  }
-  if (type === "image") {
-    return {
-      type,
-      url: String(action?.url || ""),
-      caption: truncateText(action?.caption || "", 200)
-    };
-  }
-  return {
-    type,
-    raw: truncateText(JSON.stringify(action || {}), 400)
-  };
-}
-
 function normalizeConversation(conv) {
   const safe = conv && typeof conv === "object" ? conv : {};
+  const context = safe.context && typeof safe.context === "object" ? safe.context : {};
+  const summaryFromContext = buildSummaryFromContext(context);
   return {
     id: String(safe.id || ""),
     contactId: String(safe.contactId || ""),
@@ -202,9 +148,12 @@ function normalizeConversation(conv) {
     inboundCount: Number(safe.inboundCount || 0),
     outboundCount: Number(safe.outboundCount || 0),
     eventCount: Number(safe.eventCount || 0),
-    summary: String(safe.summary || ""),
-    tags: normalizeArray(safe.tags).map(tag => String(tag || "")).filter(Boolean),
-    context: safe.context && typeof safe.context === "object" ? safe.context : {}
+    summary: String(summaryFromContext || safe.summary || ""),
+    tags: mergeConversationContextTags(
+      normalizeArray(safe.tags).map(tag => String(tag || "")).filter(Boolean),
+      context
+    ),
+    context
   };
 }
 
@@ -398,6 +347,21 @@ async function loadJsonByKeys(keys, batchSize = 30) {
   return output;
 }
 
+async function loadRecentEvents(conversation, limit = 8) {
+  const safeConversation = normalizeConversation(conversation);
+  const maxEvents = Math.max(1, Math.min(Number(limit || 8), safeConversation.eventCount || 0, 50));
+  if (!maxEvents) {
+    return [];
+  }
+  const start = Math.max(1, safeConversation.eventCount - maxEvents + 1);
+  const keys = [];
+  for (let seq = start; seq <= safeConversation.eventCount; seq += 1) {
+    keys.push(keyEvent(safeConversation.id, seq));
+  }
+  const rawEvents = await loadJsonByKeys(keys, 20);
+  return rawEvents.filter(Boolean);
+}
+
 async function getConversation(conversationId) {
   const conv = await kvGetJson(keyConversation(conversationId));
   return conv ? normalizeConversation(conv) : null;
@@ -511,34 +475,7 @@ async function ensureOpenConversation(contactId, contactName) {
 }
 
 function mergeContextTags(conversation, sessionData) {
-  const tags = new Set(normalizeArray(conversation.tags));
-  if (sessionData.orderType) {
-    tags.add(`order_type:${String(sessionData.orderType).toLowerCase()}`);
-  }
-  if (sessionData.mode) {
-    tags.add(`mode:${String(sessionData.mode).toLowerCase()}`);
-  }
-  if (sessionData.zone) {
-    tags.add(`zone:${String(sessionData.zone).toLowerCase()}`);
-  }
-  conversation.tags = Array.from(tags).slice(0, 40);
-}
-
-function buildSummaryFromContext(sessionData) {
-  const parts = [];
-  if (sessionData.orderType) {
-    parts.push(`tipo ${sessionData.orderType}`);
-  }
-  if (sessionData.mode) {
-    parts.push(`modalidad ${sessionData.mode}`);
-  }
-  if (sessionData.zone) {
-    parts.push(`zona ${sessionData.zone}`);
-  }
-  if (sessionData.items) {
-    parts.push(`${sessionData.items} items`);
-  }
-  return parts.join(" | ");
+  conversation.tags = mergeConversationContextTags(conversation.tags, sessionData);
 }
 
 async function recordInboundMessage({ contactId, contactName, inboundText, inboundMessage, messageId }) {
@@ -556,6 +493,7 @@ async function recordInboundMessage({ contactId, contactName, inboundText, inbou
   });
 
   conv.inboundCount += 1;
+  conv.tags = stripInactivityPromptTag(conv.tags);
   if (markAsTest) {
     conv.tags = Array.from(new Set([...(conv.tags || []), "test_run"])).slice(0, 40);
   }
@@ -599,6 +537,18 @@ async function recordFlowTransition({ conversationId: id, flowMeta }) {
   if (meta.handedToHuman) {
     conversation.status = "agent_pending";
     conversation.resolver = "human_pending";
+  } else {
+    const explicitlyClearedAdvisor =
+      Object.prototype.hasOwnProperty.call(sessionData, "waitingAdvisor") &&
+      sessionData.waitingAdvisor === false;
+
+    if (meta.closed) {
+      conversation.status = "closed";
+      conversation.resolver = "human";
+    } else if (explicitlyClearedAdvisor && conversation.status === "agent_pending") {
+      conversation.status = "open";
+      conversation.resolver = "automatic";
+    }
   }
 
   const payload = {
@@ -667,7 +617,11 @@ async function recordOutboundMessage({ conversationId: id, action, status = "sen
 
 async function listConversations({ limit = 60, status = "", contactId = "", tag = "" } = {}) {
   const max = Math.max(1, Math.min(Number(limit || 60), 200));
-  const tagFilter = String(tag || "").trim();
+  const requiredTags = normalizeArray(
+    Array.isArray(tag) ? tag : String(tag || "").split(",")
+  )
+    .map(value => String(value || "").trim())
+    .filter(Boolean);
   const ids = normalizeArray(
     await kvGetJson(contactId ? keyContactConversations(contactId) : keyAllConversations())
   );
@@ -684,10 +638,11 @@ async function listConversations({ limit = 60, status = "", contactId = "", tag 
     if (status && conv.status !== status) {
       continue;
     }
-    if (tagFilter && !(conv.tags || []).includes(tagFilter)) {
+    if (requiredTags.length > 0 && !requiredTags.every(requiredTag => (conv.tags || []).includes(requiredTag))) {
       continue;
     }
-    output.push(conv);
+    const events = await loadRecentEvents(conv, 8);
+    output.push(applyConversationPreview(conv, events));
   }
   return output;
 }
@@ -744,7 +699,7 @@ async function getConversationDetail(conversationId, limit = DETAIL_EVENTS_LIMIT
   const events = rawEvents.filter(Boolean);
 
   return {
-    conversation,
+    conversation: applyConversationPreview(conversation, events),
     events
   };
 }
@@ -764,6 +719,18 @@ function getAuditStorageStatus() {
   };
 }
 
+async function addConversationTag(id, tag) {
+  if (!id || !tag) return null;
+  const key = keyConversation(id);
+  const conv = await getConversation(id);
+  if (!conv) return null;
+  const tags = new Set([...(conv.tags || [])]);
+  tags.add(String(tag));
+  conv.tags = Array.from(tags).slice(0, 40);
+  await saveConversation(conv);
+  return conv;
+}
+
 module.exports = {
   recordInboundMessage,
   recordFlowTransition,
@@ -771,5 +738,6 @@ module.exports = {
   listConversations,
   getConversationDetail,
   getConversationSummary,
-  getAuditStorageStatus
+  getAuditStorageStatus,
+  addConversationTag
 };

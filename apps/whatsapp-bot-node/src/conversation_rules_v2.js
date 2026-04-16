@@ -1,4 +1,5 @@
-const { config } = require("./config");
+﻿const { config, isVercelRuntime } = require("./config");
+const { combineChoiceLabel, extractChoiceToken, indexToChoiceToken, normalizeChoiceLabel } = require("./choice_format");
 const { getChatbotRuntimeConfig } = require("./workflow_store");
 const { createFlowEngine } = require("./flow_engine");
 const {
@@ -24,7 +25,22 @@ const PARTICULAR_OPTIONS_PER_PAGE = 5;
 const KV_REST_API_URL = String(process.env.KV_REST_API_URL || "").trim().replace(/\/+$/, "");
 const KV_REST_API_TOKEN = String(process.env.KV_REST_API_TOKEN || "").trim();
 const KV_STATE_PREFIX = String(process.env.STATE_STORE_PREFIX || "wa:state:").trim();
-const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
+const FAST_LOCAL_STATE_SYNC = !isVercelRuntime && config.whatsappTransport === "web";
+const LOCAL_WEB_KV_STATE_ENABLED =
+  String(process.env.WHATSAPP_WEB_USE_KV_STATE || "").trim().toLowerCase() === "true";
+const KV_ENABLED = Boolean(KV_REST_API_URL && KV_REST_API_TOKEN) && (!FAST_LOCAL_STATE_SYNC || LOCAL_WEB_KV_STATE_ENABLED);
+const LOCAL_STATE_HYDRATE_GRACE_MS = Math.max(0, Number(process.env.LOCAL_STATE_HYDRATE_GRACE_MS || (FAST_LOCAL_STATE_SYNC ? 3000 : 0)));
+const KV_REQUEST_TIMEOUT_MS = Math.max(250, Number(process.env.KV_REQUEST_TIMEOUT_MS || (FAST_LOCAL_STATE_SYNC ? 1200 : 3500)));
+const KV_REMOTE_BACKOFF_MS = Math.max(
+  10000,
+  Number(process.env.KV_REMOTE_BACKOFF_MS || (FAST_LOCAL_STATE_SYNC ? 300000 : 30000))
+);
+const DUPLICATE_INBOUND_WINDOW_MS = Math.max(250, Number(process.env.DUPLICATE_INBOUND_WINDOW_MS || 2500));
+const COARSE_DUPLICATE_INBOUND_WINDOW_MS = Math.max(
+  300,
+  Math.min(DUPLICATE_INBOUND_WINDOW_MS, Number(process.env.COARSE_DUPLICATE_INBOUND_WINDOW_MS || 900))
+);
+const AGENT_AUTO_REPLY_COOLDOWN_MS = Math.max(30000, Number(process.env.AGENT_AUTO_REPLY_COOLDOWN_MS || 300000));
 
 const S = {
   IDLE: "idle",
@@ -54,6 +70,8 @@ const STEP = {
 
 const sessions = new Map();
 const profiles = new Map();
+const recentInboundFingerprints = new Map();
+let kvRemoteBackoffUntil = 0;
 const PRODUCT_SEARCH_MODE = {
   NAME: "product_name",
   DRUG: "drug"
@@ -64,6 +82,27 @@ const arsFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 2
 });
 
+function buildSessionContactCandidates(contactId) {
+  const raw = String(contactId || "").trim();
+  const bare = raw.replace(/@(c\.us|lid)$/i, "");
+  if (!bare) {
+    return [];
+  }
+
+  return [...new Set([raw, bare, `${bare}@lid`, `${bare}@c.us`].filter(Boolean))];
+}
+
+function isStateRemoteBackoffActive() {
+  return FAST_LOCAL_STATE_SYNC && kvRemoteBackoffUntil > Date.now();
+}
+
+function markStateRemoteBackoff() {
+  if (!FAST_LOCAL_STATE_SYNC) {
+    return;
+  }
+  kvRemoteBackoffUntil = Date.now() + KV_REMOTE_BACKOFF_MS;
+}
+
 async function nextBotReply({ contactId, contactName, inboundText, inboundMessage }) {
   if (!contactId) {
     throw new Error("contactId is required");
@@ -73,13 +112,29 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   cleanupExpiredSessions();
   const runtime = await getChatbotRuntimeConfig();
   const flowEngine = createFlowEngine(runtime.workflow);
-  const profile = getProfile(contactId, contactName);
   const session = getSession(contactId);
-  const beforeSnapshot = buildSessionSnapshot(session);
   const input = buildInput(inboundText, inboundMessage);
+  if (!isPendingCheckoutAdvisorHold(session) && (isMenu(input.normalized) || isRestartCommand(input) || isGreeting(input.normalized))) {
+    await resetContactState(contactId, { preserveProfile: true });
+  }
+
+  const profile = getProfile(contactId, contactName);
+  const beforeSnapshot = buildSessionSnapshot(session);
+  applyStoredPromptChoice(session, input);
   let result;
 
-  if (input.buttonId === "inactivity_continue_no") {
+  if (isPendingCheckoutAdvisorHold(session)) {
+    result = session.data?.manualAdvisorIntervened
+      ? { actions: [] }
+      : {
+          actions: [
+            {
+              type: "text",
+              text: "Te pedimos paciencia, por favor, en breve un asesor se va a comunicar por este medio para terminar la compra."
+            }
+          ]
+        };
+  } else if (input.buttonId === "inactivity_continue_no") {
     resetSession(session);
     result = {
       actions: [{ type: "text", text: "Muchas gracias por contactarnos. Cuando lo necesites, escribinos de nuevo." }],
@@ -87,18 +142,25 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
     };
   } else if (input.buttonId === "inactivity_continue_yes") {
     session.fallback = 0;
-    result = {
-      actions: [
-        { type: "text", text: "Perfecto, seguimos donde habíamos quedado." },
-        ...repeatCurrentPrompt(session, profile, runtime)
-      ]
-    };
+      result = {
+        actions: [
+          { type: "text", text: "Perfecto, seguimos donde habíamos quedado." },
+          ...repeatCurrentPrompt(session, profile, runtime)
+        ]
+      };
   } else if (isCancel(input.normalized)) {
     resetSession(session);
     result = { actions: [{ type: "text", text: "Pedido cancelado." }, ...resumeMenuActions(runtime)] };
   } else if (isMenu(input.normalized)) {
     resetSession(session);
-    result = { actions: resumeMenuActions(runtime) };
+    profile.welcomed = true;
+    result = startFlow(session, profile, runtime, flowEngine);
+  } else if (isRestartCommand(input)) {
+    resetSession(session);
+    profile.welcomed = false;
+    result = startFlow(session, profile, runtime, flowEngine);
+  } else if (isHomeCommand(input)) {
+    result = handleHomeCommand(session, runtime, flowEngine);
   } else if (isBackCommand(input)) {
     result = handleBackCommand(session, runtime, flowEngine);
   } else if (isHuman(input.normalized)) {
@@ -114,32 +176,26 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
       ]
     };
   } else if (session.state === S.AGENT) {
-    result = { actions: [{ type: "text", text: "Tu caso está en revisión por nuestro equipo. Si querés volver al bot, escribí MENU." }] };
+    result = session.data?.manualAdvisorIntervened
+      ? { actions: [] }
+      : shouldSendAgentWaitingNotice(session)
+        ? { actions: [{ type: "text", text: buildAgentWaitingNoticeText(session) }] }
+        : { actions: [] };
   } else if (session.state === S.IDLE) {
-    if (!input.normalized || isGreeting(input.normalized)) {
-      result = startFlow(session, profile, runtime, flowEngine);
-    } else {
-      if (recoverFromInput(session, input) || parseModeChoice(input)) {
-        session.state = S.ORDER;
-        if (!session.step) {
-          move(session, STEP.MENU);
-        }
-        result = await handleOrder(session, profile, input, runtime, flowEngine);
-      } else {
-        result = startFlow(session, profile, runtime, flowEngine);
-      }
-    }
+    result = await continueFromIdleInput(session, profile, input, runtime, flowEngine);
   } else {
     result = await handleOrder(session, profile, input, runtime, flowEngine);
   }
 
   const afterSnapshot = buildSessionSnapshot(session);
+  const sanitizedActions = sanitizeActions(Array.isArray(result?.actions) ? result.actions : []);
+  rememberPromptChoices(session, sanitizedActions, { clear: afterSnapshot.state !== S.ORDER || !afterSnapshot.step });
   const baseMeta = {
     before: beforeSnapshot,
     after: afterSnapshot,
     transition: session.lastTransition || null,
     closed: beforeSnapshot.state !== S.IDLE && afterSnapshot.state === S.IDLE,
-    handedToHuman: afterSnapshot.state === S.AGENT,
+    handedToHuman: Boolean(result?.meta?.handedToHuman || afterSnapshot.state === S.AGENT || session.data?.waitingAdvisor),
     sessionData: snapshotSessionData(session.data)
   };
   session.lastTransition = null;
@@ -148,7 +204,7 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
   await persistState(contactId, session, profile);
 
   return {
-    actions: sanitizeActions(Array.isArray(result?.actions) ? result.actions : []),
+    actions: sanitizedActions,
     meta: {
       ...baseMeta,
       ...(result?.meta || {})
@@ -157,9 +213,26 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
 }
 
 function startFlow(session, profile, runtime, flowEngine) {
+  session.data = {};
   session.state = S.ORDER;
   move(session, resolveStep(flowEngine, STEP.MENU, STEP.MENU));
   return { actions: mainMenu(profile, runtime) };
+}
+
+async function continueFromIdleInput(session, profile, input, runtime, flowEngine) {
+  if (!input.normalized || isGreeting(input.normalized)) {
+    return startFlow(session, profile, runtime, flowEngine);
+  }
+
+  if (recoverFromInput(session, input) || parseModeChoice(input)) {
+    session.state = S.ORDER;
+    if (!session.step) {
+      move(session, STEP.MENU);
+    }
+    return handleOrder(session, profile, input, runtime, flowEngine);
+  }
+
+  return startFlow(session, profile, runtime, flowEngine);
 }
 
 async function handleOrder(session, profile, input, runtime, flowEngine) {
@@ -244,7 +317,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!choice) {
         return fallback(
           session,
-          "Elegí Particular, Vacunas u Obra Social.",
+          "Elegí Particular, Programa de sobrepeso y diabetes u Obra social.",
           nodeText(runtime, "service_type", "Elegí una opción."),
           serviceTypeInteractive(runtime)
         );
@@ -259,19 +332,17 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       }
 
       if (choice.kind === "particular") {
-        move(session, STEP.PARTICULAR_SEARCH_MODE);
         session.lastTransition = {
           from: STEP.SERVICE_TYPE,
           routeKey: "service_particular",
-          to: STEP.PARTICULAR_SEARCH_MODE
+          to: S.AGENT
         };
-        if (hasRecentProductHistory(profile)) {
-          enableRecentProductHistoryOffer(session);
-          return { actions: buildRecentProductHistoryActions(profile) };
-        }
-
         clearRecentProductHistoryOffer(session);
-        return { actions: buildParticularSearchModeActions() };
+        return handoffToAdvisor(session, {
+          reason: "particular_advisor_handoff",
+          routeKey: "service_particular",
+          text: "Particular.\nEn breve un asesor se va a comunicar por este medio para ayudarte con tu pedido."
+        });
       }
 
       resetProductWizard(session);
@@ -290,7 +361,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
         if (!recentChoice) {
           return fallback(
             session,
-            "Elegi un producto anterior o busca otro distinto.",
+            "Elegí una opción con la letra.",
             buildRecentProductHistoryPrompt(profile),
             buildRecentProductHistoryActions(profile)
           );
@@ -326,7 +397,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!searchMode) {
         return fallback(
           session,
-          "Elegí si querés buscar por droga o por nombre de producto.",
+          "Elegí si querés buscar por droga o por nombre.",
           buildParticularSearchModePrompt(),
           buildParticularSearchModeActions()
         );
@@ -343,7 +414,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!input.hasMedia) {
         return fallback(
           session,
-          "Necesito la receta en foto o PDF.",
+          "Para seguir necesito la receta en foto o PDF. Enviámela por acá.",
           nodeText(runtime, "receta_upload", "Enviá tu receta."),
           buildRecipeUploadNavigation()
         );
@@ -377,7 +448,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!finalRecetario) {
         return fallback(
           session,
-          "Respondé Sí o No.",
+          "Elegí una opción.",
           buildRecetarioPromptText(),
           buildRecetarioActions()
         );
@@ -410,12 +481,15 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
 
     case STEP.SUMMARY: {
       const finalDecision = parseSummaryChoice(input);
-      if (finalDecision === "add_more") {
+      const canAddMoreFromSummary = allowsSummaryAddMore(session.data);
+      const invalidAddMoreSelection = finalDecision === "add_more" && !canAddMoreFromSummary;
+
+      if (finalDecision === "add_more" && canAddMoreFromSummary) {
         commitCurrentItemDraft(session);
         clearLookupData(session);
         move(session, STEP.CART_INPUT);
         return {
-          actions: [buildCartInputNavigation("Perfecto. Escribime el otro producto que querés sumar.")]
+          actions: [buildCartInputNavigation("Perfecto. Escribime el otro producto que quer�s sumar.")]
         };
       }
 
@@ -425,10 +499,12 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
         return { actions: buildRecetarioActions() };
       }
 
-      if (!finalDecision) {
+      if (!finalDecision || invalidAddMoreSelection) {
         return fallback(
           session,
-          "Elegí si querés agregar algo más o terminar la compra.",
+          canAddMoreFromSummary
+            ? "Elegí si querés agregar algo más o terminar la compra."
+            : "Elegí si querés terminar la compra o volver al menú anterior.",
           buildOperationalSummaryText(session.data),
           buildSummaryActions(session.data)
         );
@@ -452,7 +528,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
         clearLookupData(session);
         move(session, STEP.CART_INPUT);
         return {
-          actions: [buildCartInputNavigation("Perfecto. Escribime el otro producto que querÃ©s sumar.")]
+          actions: [buildCartInputNavigation("Perfecto. Escribime el otro producto que querés sumar.")]
         };
       }
 
@@ -465,7 +541,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!decision) {
         return fallback(
           session,
-          noStock ? "Tocá Volver para elegir otra opción." : "Tocá Confirmar o Volver.",
+          noStock ? "Elegí una opción para seguir." : "Elegí una opción para seguir.",
           buildOperationalSummaryText(session.data),
           buildSummaryActions(session.data)
         );
@@ -486,7 +562,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (noStock) {
         return fallback(
           session,
-          "Ese producto no tiene stock confirmado. Tocá Volver para elegir otra opción.",
+          "Ese producto no tiene stock confirmado. Elegí una opción para seguir.",
           buildOperationalSummaryText(session.data),
           buildSummaryActions(session.data)
         );
@@ -512,7 +588,7 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
       if (!choice) {
         return fallback(
           session,
-          "ElegÃ­ si querÃ©s usar esa direcciÃ³n o cargar otra.",
+          "Elegí si querés usar esa dirección o cargar otra.",
           buildSavedDeliveryPrompt(profile),
           buildSavedDeliveryActions(profile)
         );
@@ -579,7 +655,7 @@ function buildServiceTypeActions(mode, runtime) {
 function serviceTypeOptions() {
   return [
     { id: "service_particular", title: "Particular" },
-    { id: "service_treatment", title: "Programa obesidad", description: "y diabetes" },
+    { id: "service_treatment", title: "Programa de sobrepeso y diabetes" },
     { id: "service_obra_social", title: "Obra Social" }
   ];
 }
@@ -806,7 +882,8 @@ function buildRecentProductHistoryActions(profile) {
               title: "Buscar otro producto",
               description: "Por droga o por nombre"
             },
-            { id: "nav_back", title: "Volver" }
+            buildBackButton(),
+            buildHomeButton()
           ]
         }
       ]
@@ -832,22 +909,22 @@ function parseRecentProductHistoryChoice(input, profile) {
 function buildFreeTextProductPrompt(step, searchMode, runtime) {
   if (step === STEP.CART_INPUT) {
     return searchMode === PRODUCT_SEARCH_MODE.DRUG
-      ? "Escribime la droga del otro producto que querés sumar."
-      : "Escribime el otro producto que querés sumar.";
+      ? "Escribime la droga del otro producto que quer�s sumar."
+      : "Escribime el otro producto que quer�s sumar.";
   }
 
   if (searchMode === PRODUCT_SEARCH_MODE.DRUG) {
-    return "Escribime la droga que querés buscar. Por ejemplo: tirzepatida o ibuprofeno.";
+    return "Escribime la droga que quer�s buscar. Por ejemplo: tirzepatida o ibuprofeno.";
   }
 
-  return "Escribime el nombre del producto que querés buscar.";
+  return "Escribime el nombre del producto que quer�s buscar.";
 }
 
 function buildFreeTextRewritePrompt(step, searchMode) {
   if (step === STEP.CART_INPUT) {
     return searchMode === PRODUCT_SEARCH_MODE.DRUG
-      ? "Perfecto. Escribime la droga del otro producto que querés sumar."
-      : "Perfecto. Escribime el otro producto que querés sumar.";
+      ? "Perfecto. Escribime la droga del otro producto que quer�s sumar."
+      : "Perfecto. Escribime el otro producto que quer�s sumar.";
   }
 
   return searchMode === PRODUCT_SEARCH_MODE.DRUG
@@ -867,7 +944,7 @@ async function handleFreeTextProductStep(step, session, input, runtime, flowEngi
   const rewritePrompt = buildFreeTextRewritePrompt(step, searchMode);
   const suggestionRewritePrompt =
     step === STEP.CART_INPUT
-      ? "Perfecto. Escribime de nuevo el producto que querés sumar."
+      ? "Perfecto. Escribime de nuevo el producto que quer�s sumar."
       : "Perfecto. Escribime el nombre del producto otra vez.";
 
   if (input.buttonId === "particular_option_rewrite") {
@@ -927,7 +1004,7 @@ async function handleFreeTextProductStep(step, session, input, runtime, flowEngi
     } else {
       return fallback(
         session,
-        `Elegí una opción de la lista o escribime ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "la droga" : "el producto"} otra vez.`,
+        `Eleg� una opci�n de la lista o escribime ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "la droga" : "el producto"} otra vez.`,
         buildParticularOptionsPrompt(session),
         buildParticularOptionsActions(session)
       );
@@ -950,7 +1027,7 @@ async function handleFreeTextProductStep(step, session, input, runtime, flowEngi
     } else {
       return fallback(
         session,
-        "Respondeme sí, no o volvé a escribir.",
+        "Respondeme s�, no o volv� a escribir.",
         buildParticularSuggestionPrompt(session),
         buildParticularSuggestionActions(session)
       );
@@ -960,7 +1037,7 @@ async function handleFreeTextProductStep(step, session, input, runtime, flowEngi
   if (input.hasMedia) {
     return fallback(
       session,
-      `Decinos por escrito ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "qué droga" : "qué producto"} necesitás.`,
+      `Decinos por escrito ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "qu� droga" : "qu� producto"} necesit�s.`,
       basePrompt,
       buildProductTextNavigation(step, basePrompt)
     );
@@ -969,7 +1046,7 @@ async function handleFreeTextProductStep(step, session, input, runtime, flowEngi
   if (!input.text || input.text.length < 3) {
     return fallback(
       session,
-      `Decime ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "qué droga" : "qué producto"} necesitás.`,
+      `Decime ${searchMode === PRODUCT_SEARCH_MODE.DRUG ? "qu� droga" : "qu� producto"} necesit�s.`,
       basePrompt,
       buildProductTextNavigation(step, basePrompt)
     );
@@ -1041,7 +1118,7 @@ async function handleProductWizardStep(session, input, runtime, flowEngine) {
     case "lab": {
       const labId = parseProductLabChoice(input);
       if (!labId) {
-        return fallback(session, "Elegi Elea, Novo Nordisk o Adium.", buildProductLabHelpText(), buildCurrentWizardInteractive(session));
+        return fallback(session, "Elegí un laboratorio de la lista.", buildProductLabHelpText(), buildCurrentWizardInteractive(session));
       }
 
       wizard.labId = labId;
@@ -1061,7 +1138,7 @@ async function handleProductWizardStep(session, input, runtime, flowEngine) {
       if (!brandId) {
         return fallback(
           session,
-          "Elegi una marca del laboratorio seleccionado.",
+          "Elegí una marca de la lista.",
           buildProductBrandHelpText(wizard.labId),
           buildCurrentWizardInteractive(session)
         );
@@ -1092,7 +1169,7 @@ async function handleProductWizardStep(session, input, runtime, flowEngine) {
       if (!productId) {
         return fallback(
           session,
-          "Elegi una presentacion del producto.",
+          "Elegí una presentación de la lista.",
           buildProductVariantHelpText(wizard.brandId),
           buildCurrentWizardInteractive(session)
         );
@@ -1139,7 +1216,7 @@ function continueAfterLookup({ session, flowEngine, sourceStep, lookup, productQ
     return {
       actions: [
         buildNavigationAction(
-          "No pude confirmar ese producto en este momento. Tocá Volver para intentarlo de nuevo o escribinos para revisarlo con un asesor."
+          "No pude confirmar ese producto en este momento. Tocá Volver al menú anterior para intentarlo de nuevo o escribinos para revisarlo con un asesor."
         )
       ]
     };
@@ -1462,7 +1539,7 @@ function buildLookupDetailsText(lookup) {
 }
 
 function buildRecetarioPromptText(lookup) {
-  return `${buildLookupDetailsText(lookup)}\n¿Estás adherido al Recetario Solidario?`;
+  return `${buildLookupDetailsText(lookup)}\n�Est�s adherido al Recetario Solidario?`;
 }
 
 function prepareCurrentItemDraft(session, options = {}) {
@@ -1488,7 +1565,7 @@ function buildCurrentItemDraft(data, options = {}) {
     available: typeof lookup.available === "boolean" ? lookup.available : null,
     publicPrice: Number.isFinite(Number(lookup.publicPrice)) ? Number(lookup.publicPrice) : null,
     publicPriceLabel: lookup.source === "api" ? "Precio" : "Precio documental de referencia",
-    recetario: typeof recetarioValue === "boolean" ? (recetarioValue ? "SÃ­" : "No") : "No informado",
+    recetario: typeof recetarioValue === "boolean" ? (recetarioValue ? "Sí" : "No") : "No informado",
     recetarioAdhered: typeof recetarioValue === "boolean" ? recetarioValue : null,
     pricingScenarios,
     pricingLines: pricingScenarios.map(formatPricingScenarioLine),
@@ -1573,17 +1650,17 @@ function buildSavedDeliveryPrompt(profile) {
   ].filter(Boolean);
 
   return [
-    "Tengo guardada esta direcciÃ³n para delivery:",
+    "Tengo guardada esta dirección para delivery:",
     ...addressParts.map(part => `- ${part}`),
-    "Â¿QuerÃ©s volver a mandar ahÃ­ o preferÃ­s otra direcciÃ³n?"
+    "¿Querés volver a mandar ahí o preferís otra dirección?"
   ].join("\n");
 }
 
 function buildSavedDeliveryActions(profile) {
   return [
     buildChoiceAction(buildSavedDeliveryPrompt(profile), [
-      { id: "delivery_saved_yes", title: "Usar esta direcciÃ³n" },
-      { id: "delivery_saved_new", title: "Otra direcciÃ³n" },
+      { id: "delivery_saved_yes", title: "Usar esta dirección" },
+      { id: "delivery_saved_new", title: "Otra dirección" },
       buildBackButton()
     ])
   ];
@@ -1593,7 +1670,7 @@ function parseSavedDeliveryChoice(input) {
   if (input.buttonId === "delivery_saved_yes" || input.normalized.includes("usar esta")) {
     return "use_saved";
   }
-  if (input.buttonId === "delivery_saved_new" || input.normalized.includes("otra direccion") || input.normalized.includes("otra direcciÃ³n")) {
+  if (input.buttonId === "delivery_saved_new" || input.normalized.includes("otra direccion") || input.normalized.includes("otra dirección")) {
     return "new_address";
   }
   return null;
@@ -1612,9 +1689,9 @@ function getDeliveryFieldPrompt(step) {
     case STEP.DELIVERY_EMAIL:
       return "Pasame un mail de contacto.";
     case STEP.DELIVERY_ADDRESS:
-      return "Pasame la direcciÃ³n de entrega.";
+      return "Pasame la dirección de entrega.";
     case STEP.DELIVERY_CROSS_STREETS:
-      return "Decime entre quÃ© calles es.";
+      return "Decime entre qué calles es.";
     case STEP.DELIVERY_NEIGHBORHOOD:
       return "Decime el barrio.";
     default:
@@ -1668,23 +1745,23 @@ function parseDeliveryFieldValue(step, rawValue) {
     case STEP.DELIVERY_FIRST_NAME:
       return value.length >= 2
         ? { ok: true, field: "firstName", value }
-        : { ok: false, message: "Pasame un nombre vÃ¡lido." };
+        : { ok: false, message: "Pasame un nombre válido." };
     case STEP.DELIVERY_LAST_NAME:
       return value.length >= 2
         ? { ok: true, field: "lastName", value }
-        : { ok: false, message: "Pasame un apellido vÃ¡lido." };
+        : { ok: false, message: "Pasame un apellido válido." };
     case STEP.DELIVERY_EMAIL:
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
         ? { ok: true, field: "email", value }
-        : { ok: false, message: "Pasame un mail vÃ¡lido." };
+        : { ok: false, message: "Pasame un mail válido." };
     case STEP.DELIVERY_ADDRESS:
       return value.length >= 5
         ? { ok: true, field: "addressLine", value }
-        : { ok: false, message: "Pasame una direcciÃ³n mÃ¡s completa." };
+        : { ok: false, message: "Pasame una dirección más completa." };
     case STEP.DELIVERY_CROSS_STREETS:
       return value.length >= 4
         ? { ok: true, field: "crossStreets", value }
-        : { ok: false, message: "Decime entre quÃ© calles es." };
+        : { ok: false, message: "Decime entre qué calles es." };
     case STEP.DELIVERY_NEIGHBORHOOD:
       return value.length >= 2
         ? { ok: true, field: "neighborhood", value }
@@ -1712,6 +1789,15 @@ function getNextDeliveryStep(step) {
 }
 
 function finalizeCheckout(session, profile) {
+  const finalText = buildFinalCheckoutText(session.data);
+  const finalSessionData = {
+    ...snapshotSessionData(session.data),
+    waitingAdvisor: true,
+    advisorHandoffReason: "checkout_final_summary",
+    manualAdvisorIntervened: false,
+    finalized: false
+  };
+
   if (session.data?.mode === "DELIVERY" && session.data?.deliveryDraft) {
     profile.delivery = {
       ...session.data.deliveryDraft,
@@ -1720,16 +1806,58 @@ function finalizeCheckout(session, profile) {
   }
 
   saveLastOrder(profile, session.data);
-  session.state = S.AGENT;
-  session.step = null;
-  session.fallback = 0;
+  resetSession(session);
+  session.data.waitingAdvisor = true;
+  session.data.advisorHandoffReason = "checkout_final_summary";
+  session.data.manualAdvisorIntervened = false;
+  session.data.finalized = false;
   return {
     actions: [
       {
         type: "text",
-        text: buildFinalCheckoutText(session.data)
+        text: finalText
       }
-    ]
+    ],
+    meta: {
+      closed: true,
+      handedToHuman: true,
+      routeKey: "checkout_completed",
+      sessionData: finalSessionData
+    }
+  };
+}
+
+function handoffToAdvisor(session, { reason = "manual_advisor", routeKey = "advisor_handoff", text = "" } = {}) {
+  const finalSessionData = {
+    ...snapshotSessionData(session.data),
+    waitingAdvisor: true,
+    advisorHandoffReason: String(reason || "manual_advisor"),
+    manualAdvisorIntervened: false,
+    finalized: false
+  };
+
+  session.state = S.AGENT;
+  session.step = null;
+  session.fallback = 0;
+  session.data.waitingAdvisor = true;
+  session.data.advisorHandoffReason = finalSessionData.advisorHandoffReason;
+  session.data.manualAdvisorIntervened = false;
+  session.data.finalized = false;
+
+  return {
+    actions: text
+      ? [
+          {
+            type: "text",
+            text
+          }
+        ]
+      : [],
+    meta: {
+      handedToHuman: true,
+      routeKey,
+      sessionData: finalSessionData
+    }
   };
 }
 
@@ -1826,10 +1954,10 @@ function buildPaymentFormsText(items) {
         labels.add("efectivo / transferencia");
       }
       if (label.includes("debito")) {
-        labels.add("dÃ©bito");
+        labels.add("débito");
       }
       if (label.includes("credito")) {
-        labels.add("crÃ©dito");
+        labels.add("crédito");
       }
     }
   }
@@ -1849,7 +1977,7 @@ function buildSummaryPayload(data) {
     stockStatus: formatStockStatus(lookup.available),
     publicPrice: lookup.publicPrice,
     publicPriceLabel: lookup.source === "api" ? "Precio" : "Precio documental de referencia",
-    recetario: typeof recetarioValue === "boolean" ? (recetarioValue ? "Sí" : "No") : "No informado",
+    recetario: typeof recetarioValue === "boolean" ? (recetarioValue ? "S�" : "No") : "No informado",
     referencePricing: data.referencePricing || null,
     pricingLines: buildPricingLines(lookup, { includeRecetario }),
     coverageNote: getProductCoverageNote(String(lookup.productId || ""))
@@ -1889,7 +2017,7 @@ function buildSummaryText(data) {
 
   if (Array.isArray(summary.pricingLines) && summary.pricingLines.length > 0) {
     lines.push("Precios con descuentos en Delko 1:");
-    lines.push(`- Condición: ${summary.referencePricing.label}`);
+    lines.push(`- Condici�n: ${summary.referencePricing.label}`);
   } else if (summary.referencePricing) {
     lines.push("- Valor de ejemplo: no disponible.");
   }
@@ -1957,7 +2085,7 @@ function buildFinalConfirmationText(data) {
 
   return [
     `Perfecto. Registramos tu solicitud de ${productTitle} ${modeLine}.`,
-    "Un asesor va a continuar por este medio para confirmar la operación."
+    "Un asesor va a continuar por este medio para confirmar la operaci�n."
   ].join("\n");
 }
 
@@ -2059,17 +2187,14 @@ function buildCurrentWizardInteractive(session) {
 
 function fallback(session, shortText, helpText, helpInteractive) {
   session.fallback = (session.fallback || 0) + 1;
-  if (session.fallback === 1) {
-    return { actions: [{ type: "text", text: `No te entendí bien. ${shortText}` }] };
-  }
-  if (session.fallback === 2) {
-    if (Array.isArray(helpInteractive) && helpInteractive.length) {
-      return { actions: helpInteractive };
+  const interactiveActions = Array.isArray(helpInteractive) ? helpInteractive.filter(Boolean) : (helpInteractive ? [helpInteractive] : []);
+  if (session.fallback <= 2) {
+    const actions = [{ type: "text", text: buildFallbackReply(shortText, interactiveActions) }];
+    if (interactiveActions.length > 0) {
+      actions.push(...interactiveActions);
+      return { actions };
     }
-    if (helpInteractive) {
-      return { actions: [helpInteractive] };
-    }
-    return { actions: [{ type: "text", text: helpText || shortText }] };
+    return { actions: [{ type: "text", text: helpText || buildFallbackReply(shortText, interactiveActions) }] };
   }
   session.state = S.AGENT;
   session.step = null;
@@ -2118,6 +2243,9 @@ function parseServiceTypeChoice(input) {
     input.buttonId === "service_treatment" ||
     input.normalized.includes("vacunas") ||
     input.normalized.includes("vacuna") ||
+    input.normalized.includes("obesidad") ||
+    input.normalized.includes("diabetes") ||
+    input.normalized.includes("programa") ||
     input.normalized.includes("diabetes tipo 2") ||
     input.normalized.includes("tratamiento")
   ) {
@@ -2130,7 +2258,7 @@ function parseServiceTypeChoice(input) {
 }
 
 function parseRecetarioChoice(input) {
-  if (input.buttonId === "recetario_yes" || ["si", "sí", "s"].includes(input.normalized)) {
+  if (input.buttonId === "recetario_yes" || ["si", "s?", "s"].includes(input.normalized)) {
     return "yes";
   }
   if (input.buttonId === "recetario_no" || input.normalized === "no") {
@@ -2153,7 +2281,7 @@ function parseSummaryChoice(input) {
 }
 
 function parseParticularSuggestionChoice(input) {
-  if (input.buttonId === "particular_suggest_yes" || ["si", "s", "sí"].includes(input.normalized)) {
+  if (input.buttonId === "particular_suggest_yes" || ["si", "s?", "s"].includes(input.normalized)) {
     return "confirm";
   }
   if (
@@ -2206,11 +2334,95 @@ function buildInput(inboundText, inboundMessage) {
     inboundMessage?.document?.caption ||
     inboundMessage?.image?.caption ||
     "";
-  const text = trim(inboundText || textFromMessage || "", 400);
+  const text = String(inboundText || textFromMessage || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim()
+    .slice(0, 400);
   const normalized = normalize(text);
   const messageType = inboundMessage?.type || (text ? "text" : "unknown");
   const hasMedia = messageType === "image" || messageType === "document";
   return { text, normalized, buttonId, hasMedia };
+}
+
+function extractPromptChoices(actions) {
+  const collected = [];
+  let index = 0;
+
+  for (const action of Array.isArray(actions) ? actions : []) {
+    if (action?.type !== "interactive") {
+      continue;
+    }
+
+    const rows = action?.interactiveType === "list"
+      ? (Array.isArray(action.sections) ? action.sections.flatMap(section => Array.isArray(section?.rows) ? section.rows : []) : [])
+      : (Array.isArray(action.buttons) ? action.buttons : []);
+
+    for (const row of rows) {
+      const id = String(row?.id || "").trim();
+      const title = String(row?.title || "").trim();
+      const description = String(row?.description || "").trim();
+      if (!id || !title) {
+        continue;
+      }
+
+      const combinedLabel = combineChoiceLabel(title, description);
+      collected.push({
+        token: indexToChoiceToken(index),
+        id,
+        title,
+        description,
+        combinedLabel,
+        normalizedTitle: normalizeChoiceLabel(title),
+        normalizedCombinedLabel: normalizeChoiceLabel(combinedLabel)
+      });
+      index += 1;
+    }
+  }
+
+  return collected;
+}
+
+function rememberPromptChoices(session, actions, options = {}) {
+  if (!session.data || typeof session.data !== "object") {
+    session.data = {};
+  }
+
+  const choices = extractPromptChoices(actions);
+  if (options.clear || choices.length === 0) {
+    delete session.data.promptChoices;
+    return;
+  }
+
+  session.data.promptChoices = choices;
+}
+
+function applyStoredPromptChoice(session, input) {
+  if (!session?.data || input?.buttonId) {
+    return input;
+  }
+
+  const choices = Array.isArray(session.data.promptChoices) ? session.data.promptChoices : [];
+  if (!choices.length) {
+    return input;
+  }
+
+  const token = extractChoiceToken(input.text);
+  let matched = token ? choices.find(choice => choice.token === token) : null;
+
+  if (!matched) {
+    const normalized = normalizeChoiceLabel(input.text);
+    matched = choices.find(choice => choice.normalizedTitle === normalized || choice.normalizedCombinedLabel === normalized) || null;
+  }
+
+  if (!matched) {
+    return input;
+  }
+
+  input.buttonId = matched.id;
+  input.text = matched.combinedLabel || matched.title || input.text;
+  input.normalized = normalizeChoiceLabel(input.text);
+  return input;
 }
 
 function buildSessionSnapshot(session) {
@@ -2228,14 +2440,16 @@ function isProductWizardInput(input) {
 function snapshotSessionData(data) {
   const input = data && typeof data === "object" ? data : {};
   const itemsList = Array.isArray(input.itemsList) ? input.itemsList : [];
+  const deliveryDraft = input.deliveryDraft && typeof input.deliveryDraft === "object" ? input.deliveryDraft : {};
   return {
     mode: String(input.mode || ""),
-    zone: "",
-    address: "",
-    branch: "",
+    zone: String(deliveryDraft.neighborhood || ""),
+    address: String(deliveryDraft.addressLine || ""),
+    branch: "Delko 1",
     orderType: String(input.orderType || ""),
     recipes: Number(input.recipes || 0),
-    items: Number(input.items || itemsList.length || 0)
+    items: Number(input.items || itemsList.length || 0),
+    waitingAdvisor: Boolean(input.waitingAdvisor)
   };
 }
 
@@ -2305,11 +2519,92 @@ function buildInteractiveGroups(text, buttons, extraButtons = []) {
 }
 
 function buildBackButton() {
-  return { id: "nav_back", title: "Volver" };
+  return { id: "nav_back", title: "Volver al menú anterior" };
 }
 
-function buildNavigationAction(promptText = "Si querés volver, tocá Volver.") {
+function buildHomeButton() {
+  return { id: "nav_home", title: "Volver al inicio" };
+}
+
+function buildRestartButton() {
+  return {
+    id: "nav_restart",
+    title: "Comenzar nuevamente",
+    description: "desde el inicio"
+  };
+}
+
+function shouldAddHomeChoice(buttons) {
+  const ids = (Array.isArray(buttons) ? buttons : [])
+    .map(button => String(button?.id || "").trim())
+    .filter(Boolean);
+
+  if (!ids.length || ids.includes("nav_home")) {
+    return false;
+  }
+
+  const nonNavigationIds = ids.filter(id => id !== "nav_back");
+  if (nonNavigationIds.length === 0) {
+    return true;
+  }
+
+  const isMainMenu = nonNavigationIds.every(id => id === "mode_delivery" || id === "mode_counter");
+  if (isMainMenu) {
+    return false;
+  }
+  return true;
+}
+
+function shouldAddRestartChoice(buttons) {
+  return false;
+}
+
+function withContextualNavigation(buttons) {
+  const resolved = Array.isArray(buttons) ? buttons.filter(Boolean) : [];
+  if (shouldAddHomeChoice(resolved)) {
+    resolved.push(buildHomeButton());
+  }
+  if (shouldAddRestartChoice(resolved)) {
+    resolved.push(buildRestartButton());
+  }
+  return resolved;
+}
+
+function buildNavigationAction(promptText = "Si querés volver, elegí una opción.") {
   return buildChoiceAction(promptText, [buildBackButton()]);
+}
+
+function flattenInteractiveRows(actions) {
+  return (Array.isArray(actions) ? actions : []).flatMap(action => {
+    if (action?.type !== "interactive") {
+      return [];
+    }
+
+    if (action.interactiveType === "list") {
+      return (Array.isArray(action.sections) ? action.sections : []).flatMap(section =>
+        Array.isArray(section?.rows) ? section.rows : []
+      );
+    }
+
+    return Array.isArray(action.buttons) ? action.buttons : [];
+  });
+}
+
+function shouldExplainLetterChoice(helpInteractive) {
+  const rows = flattenInteractiveRows(Array.isArray(helpInteractive) ? helpInteractive : [helpInteractive]);
+  const selectableRows = rows.filter(row => {
+    const id = String(row?.id || "").trim();
+    return id && id !== "nav_back" && id !== "nav_home" && id !== "nav_restart";
+  });
+  return selectableRows.length > 0;
+}
+
+function buildFallbackReply(shortText, helpInteractive) {
+  const baseText = String(shortText || "").trim() || "No pude entender esa respuesta.";
+  if (!shouldExplainLetterChoice(helpInteractive)) {
+    return baseText;
+  }
+  return `${baseText}\n\n*Respondé con la letra de la opción.*`;
 }
 
 function buildParticularInputActions(runtime, session = null) {
@@ -2330,7 +2625,7 @@ function buildCartInputActions(promptText = "", session = null, runtime = null) 
   return buildFreeTextProductActions(STEP.CART_INPUT, session || {}, runtime, resolvedPrompt);
 }
 
-function buildCartInputNavigation(promptText = "Â¿QuÃ© querÃ©s agregar?") {
+function buildCartInputNavigation(promptText = "¿Qué querés agregar?") {
   return buildNavigationAction(promptText);
 }
 
@@ -2386,7 +2681,8 @@ function buildParticularOptionsList(session) {
     title: "Contactar asesor",
     description: "El producto no está"
   });
-  utilityRows.push({ id: "nav_back", title: "Volver" });
+  utilityRows.push(buildBackButton());
+  utilityRows.push(buildHomeButton());
 
   return {
     type: "interactive",
@@ -2430,7 +2726,7 @@ function buildParticularNoResultsAction(query, searchMode = PRODUCT_SEARCH_MODE.
       : "No encontré opciones claras. Si querés, escribilo de otra manera o te derivamos con un asesor.";
   return buildChoiceAction(text, [
     { id: "particular_option_rewrite", title: "Volver a escribir" },
-    { id: "particular_option_human", title: "Contactar asesor" },
+    { id: "particular_option_human", title: "Contactar asesor", description: "El producto no está" },
     buildBackButton()
   ]);
 }
@@ -2482,7 +2778,7 @@ function buildInteractive(text, buttons) {
 }
 
 function buildChoiceAction(text, buttons, buttonText = "Ver opciones") {
-  const choices = Array.isArray(buttons) ? buttons.filter(Boolean) : [];
+  const choices = withContextualNavigation(buttons);
   if (choices.length <= 3) {
     return buildInteractive(text, choices);
   }
@@ -2501,7 +2797,7 @@ function buildInteractiveList(text, buttons, buttonText = "Ver opciones") {
   const sections = [];
   for (let index = 0; index < rows.length; index += 10) {
     sections.push({
-      title: sections.length === 0 ? "Opciones" : `Más opciones ${sections.length + 1}`,
+      title: sections.length === 0 ? "Opciones" : "Más opciones",
       rows: rows.slice(index, index + 10)
     });
   }
@@ -2528,6 +2824,22 @@ function normalizeUiCopy(text) {
     ["Resumen.", "Revisá el resumen."]
   ]);
   return replacements.get(value) || value;
+}
+
+function isHomeCommand(input) {
+  return String(input?.buttonId || "") === "nav_home" || ["volver al inicio", "inicio"].includes(String(input?.normalized || ""));
+}
+
+function isRestartCommand(input) {
+  return String(input?.buttonId || "") === "nav_restart"
+    || ["comenzar nuevamente desde el inicio", "comenzar nuevamente", "comenzar de nuevo", "reiniciar", "reinicio"].includes(String(input?.normalized || ""));
+}
+
+function handleHomeCommand(session, runtime, flowEngine) {
+  clearRecentProductHistoryOffer(session);
+  resetSession(session);
+  move(session, resolveStep(flowEngine, STEP.MENU, STEP.MENU));
+  return { actions: resumeMenuActions(runtime) };
 }
 
 function isBackCommand(input) {
@@ -2645,6 +2957,34 @@ function resetSession(session) {
   session.fallback = 0;
 }
 
+function shouldSendAgentWaitingNotice(session, timestamp = Date.now()) {
+  if (!session?.data || typeof session.data !== "object") {
+    session.data = {};
+  }
+
+  const safeTimestamp = Number(timestamp || 0) > 0 ? Number(timestamp) : Date.now();
+  const previous = Number(session.data.agentWaitingNoticeAt || 0);
+  if (previous > 0 && safeTimestamp - previous < AGENT_AUTO_REPLY_COOLDOWN_MS) {
+    return false;
+  }
+
+  session.data.agentWaitingNoticeAt = safeTimestamp;
+  return true;
+}
+
+function buildAgentWaitingNoticeText(session) {
+  if (isPendingCheckoutAdvisorHold(session)) {
+    return "Te pedimos paciencia, por favor, en breve un asesor se va a comunicar por este medio para terminar la compra.";
+  }
+
+  return "Tu caso está en revisión por nuestro equipo. Si querés volver al bot, escribí MENU.";
+}
+
+function isPendingCheckoutAdvisorHold(session) {
+  const handoffReason = String(session?.data?.advisorHandoffReason || "").trim().toLowerCase();
+  return Boolean(session?.data?.waitingAdvisor) && handoffReason === "checkout_final_summary";
+}
+
 function getSession(contactId) {
   const s = sessions.get(contactId);
   if (s) {
@@ -2669,7 +3009,7 @@ function buildStateKey(contactId) {
 }
 
 async function hydrateState(contactId) {
-  if (!KV_ENABLED) {
+  if (!KV_ENABLED || isStateRemoteBackoffActive()) {
     return;
   }
 
@@ -2682,7 +3022,11 @@ async function hydrateState(contactId) {
   const localSession = sessions.get(contactId) || null;
   const remoteUpdatedAt = Number(remoteSession?.updatedAt || 0);
   const localUpdatedAt = Number(localSession?.updatedAt || 0);
-  const shouldUseRemoteSession = Boolean(remoteSession) && (!localSession || remoteUpdatedAt >= localUpdatedAt);
+  const localFresh = Boolean(localSession)
+    && LOCAL_STATE_HYDRATE_GRACE_MS > 0
+    && localUpdatedAt > 0
+    && (Date.now() - localUpdatedAt) <= LOCAL_STATE_HYDRATE_GRACE_MS;
+  const shouldUseRemoteSession = Boolean(remoteSession) && (!localSession || (!localFresh && remoteUpdatedAt >= localUpdatedAt));
 
   if (shouldUseRemoteSession) {
     sessions.set(contactId, payload.session);
@@ -2694,7 +3038,7 @@ async function hydrateState(contactId) {
 }
 
 async function persistState(contactId, session, profile) {
-  if (!KV_ENABLED) {
+  if (!KV_ENABLED || isStateRemoteBackoffActive()) {
     return;
   }
 
@@ -2704,13 +3048,21 @@ async function persistState(contactId, session, profile) {
 }
 
 async function kvGetJson(key) {
+  if (isStateRemoteBackoffActive()) {
+    return null;
+  }
+
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), KV_REQUEST_TIMEOUT_MS);
     const response = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
       headers: {
         Authorization: `Bearer ${KV_REST_API_TOKEN}`
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: controller.signal
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       return null;
@@ -2728,21 +3080,52 @@ async function kvGetJson(key) {
     return typeof data.result === "object" ? data.result : null;
   } catch (error) {
     console.warn("KV read failed, using in-memory state:", error.message);
+    markStateRemoteBackoff();
     return null;
   }
 }
 
 async function kvSetJson(key, value, ttlSeconds) {
+  if (isStateRemoteBackoffActive()) {
+    return;
+  }
+
   try {
     const encodedValue = encodeURIComponent(JSON.stringify(value));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), KV_REQUEST_TIMEOUT_MS);
     await fetch(`${KV_REST_API_URL}/setex/${encodeURIComponent(key)}/${ttlSeconds}/${encodedValue}`, {
       headers: {
         Authorization: `Bearer ${KV_REST_API_TOKEN}`
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: controller.signal
     });
+    clearTimeout(timeout);
   } catch (error) {
     console.warn("KV write failed, state remains in-memory:", error.message);
+    markStateRemoteBackoff();
+  }
+}
+
+async function kvDelete(key) {
+  if (!KV_ENABLED || isStateRemoteBackoffActive()) {
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), KV_REQUEST_TIMEOUT_MS);
+    await fetch(`${KV_REST_API_URL}/del/${encodeURIComponent(key)}`, {
+      headers: {
+        Authorization: `Bearer ${KV_REST_API_TOKEN}`
+      },
+      cache: "no-store",
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+  } catch (error) {
+    console.warn("KV delete failed, stale remote state may remain:", error.message);
   }
 }
 
@@ -2751,6 +3134,12 @@ function cleanupExpiredSessions() {
   for (const [id, session] of sessions.entries()) {
     if (now - session.updatedAt > SESSION_TTL_MS) {
       sessions.delete(id);
+    }
+  }
+
+  for (const [key, timestamp] of recentInboundFingerprints.entries()) {
+    if (now - Number(timestamp || 0) > DUPLICATE_INBOUND_WINDOW_MS * 4) {
+      recentInboundFingerprints.delete(key);
     }
   }
 }
@@ -2777,11 +3166,7 @@ function formatCurrency(value) {
 }
 
 function normalize(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+  return normalizeChoiceLabel(value);
 }
 
 function tokenizeQuery(value) {
@@ -2855,7 +3240,7 @@ function toButtonTitle(value) {
 }
 
 function isGreeting(normalized) {
-  return ["hola", "buenas", "buen día", "buen dia", "buenas tardes", "buenas noches", "hello"].includes(normalized);
+  return ["hola", "buenas", "buen d�a", "buen dia", "buenas tardes", "buenas noches", "hello"].includes(normalized);
 }
 
 function isCancel(normalized) {
@@ -2863,15 +3248,21 @@ function isCancel(normalized) {
 }
 
 function isMenu(normalized) {
-  return ["menu", "menú", "inicio", "opciones"].includes(normalized);
+  return ["menu", "men�", "inicio", "opciones"].includes(normalized);
 }
 
 function isBack(normalized) {
-  return ["volver", "atras", "atrás", "anterior"].includes(normalized);
+  return ["volver", "volver al menu anterior", "atras", "atr�s", "anterior", "menu anterior"].includes(normalized);
 }
 
 function isHuman(normalized) {
-  return normalized.includes("asesor") || normalized.includes("agente") || normalized.includes("humano");
+  return (
+    normalized.includes("asesor") ||
+    normalized.includes("asesora") ||
+    normalized.includes("agente") ||
+    normalized.includes("humano") ||
+    normalized.includes("humana")
+  );
 }
 
 function continueAfterLookup({ session, flowEngine, sourceStep, lookup, productQuery }) {
@@ -2882,7 +3273,7 @@ function continueAfterLookup({ session, flowEngine, sourceStep, lookup, productQ
     return {
       actions: [
         buildNavigationAction(
-          "No pude confirmar ese producto en este momento. TocÃ¡ Volver para intentarlo de nuevo o escribinos para revisarlo con un asesor."
+          "No pude confirmar ese producto en este momento. Tocá Volver al menú anterior para intentarlo de nuevo o escribinos para revisarlo con un asesor."
         )
       ]
     };
@@ -2939,7 +3330,7 @@ function buildOperationalSummaryText(data) {
   const hasDraft = Boolean(data?.currentItemDraft?.productTitle);
 
   if (hasDraft) {
-    lines.push("RevisÃ¡ este producto:");
+    lines.push("Revisá este producto:");
     lines.push(`- Producto: ${summary.productTitle || "No informado"}`);
     lines.push(`- Stock: ${summary.stockStatus || "A pedido"}`);
     if (summary.publicPrice !== null) {
@@ -2953,7 +3344,7 @@ function buildOperationalSummaryText(data) {
       lines.push(...summary.pricingLines.map(line => `- ${String(line || "").replace(/^- /, "")}`));
     }
     lines.push(`- Productos en el pedido: ${summary.cartItems || 1}`);
-    lines.push("Â¿QuerÃ©s agregar algo mÃ¡s o terminar la compra?");
+    lines.push("¿Querés agregar algo más o terminar la compra?");
     return lines.join("\n");
   }
 
@@ -2965,7 +3356,7 @@ function buildOperationalSummaryText(data) {
     lines.push("Totales con descuentos:");
     lines.push(...summary.pricingLines);
   }
-  lines.push("Â¿QuerÃ©s agregar algo mÃ¡s o terminar la compra?");
+  lines.push("¿Querés agregar algo más o terminar la compra?");
   return lines.join("\n");
 }
 
@@ -2975,8 +3366,15 @@ function summaryButtons(data) {
     return [buildBackButton()];
   }
 
+  if (!allowsSummaryAddMore(data)) {
+    return [
+      { id: "summary_finish", title: "Terminar compra" },
+      buildBackButton()
+    ];
+  }
+
   return [
-    { id: "summary_add_more", title: "Agregar algo mÃ¡s" },
+    { id: "summary_add_more", title: "Agregar algo más" },
     { id: "summary_finish", title: "Terminar compra" },
     buildBackButton()
   ];
@@ -3200,7 +3598,7 @@ function goBackFromSummary(session, runtime, flowEngine) {
 
   if (Array.isArray(session.data?.itemsList) && session.data.itemsList.length > 0) {
     move(session, STEP.CART_INPUT);
-    return buildCartInputActions("Escribime otro producto si querÃ©s seguir sumando.");
+    return buildCartInputActions("Escribime otro producto si querés seguir sumando.");
   }
 
   return buildParticularInputActions(runtime);
@@ -3331,7 +3729,7 @@ function buildDeliveryDetailsPrompt(missingFields = []) {
 
   return [
     intro,
-    "Copiá y completá este formato:",
+    "Copi� y complet� este formato:",
     buildDeliveryDetailsTemplate()
   ].join("\n");
 }
@@ -3616,11 +4014,24 @@ function parseDeliveryAddressBlock(rawText, currentDraft = {}) {
     return labeledDraft;
   }
 
+  if (lines.length >= 3) {
+    return {
+      ...labeledDraft,
+      addressLine: trim(stripDeliveryFieldPrefix(lines[0]), 160),
+      crossStreets: trim(stripLeadingEntre(stripDeliveryFieldPrefix(lines[1])), 160),
+      neighborhood: trim(stripDeliveryFieldPrefix(lines.slice(2).join(", ")), 120)
+    };
+  }
+
   if (lines.length >= 2) {
     const missingFieldOrder = addressFields.filter(field => !trim(currentDraft?.[field] || "", 180));
     const sequentialFields = missingFieldOrder.length > 0 ? missingFieldOrder : addressFields;
     for (let index = 0; index < Math.min(lines.length, sequentialFields.length); index += 1) {
-      labeledDraft[sequentialFields[index]] = trim(stripDeliveryFieldPrefix(lines[index]), 180);
+      const field = sequentialFields[index];
+      const rawValue = trim(stripDeliveryFieldPrefix(lines[index]), 180);
+      labeledDraft[field] = field === "crossStreets"
+        ? trim(stripLeadingEntre(rawValue), 180)
+        : rawValue;
     }
     return labeledDraft;
   }
@@ -3754,7 +4165,7 @@ function stripLeadingEntre(value) {
 }
 
 function stripDeliveryFieldPrefix(value) {
-  return String(value || "").replace(/^(nombre|apellido|mail|email|correo|direccion|dirección|entre calles|calles|barrio)\s*:?\s*/i, "");
+  return String(value || "").replace(/^(nombre|apellido|mail|email|correo|direccion|direcci�n|entre calles|calles|barrio)\s*:?\s*/i, "");
 }
 
 function looksLikeCrossStreets(value) {
@@ -3946,7 +4357,7 @@ function buildFinalCheckoutText(data) {
   }
 
   if (typeof data?.recetarioAdhered === "boolean") {
-    lines.push(`Recetario Solidario: ${data.recetarioAdhered ? "Sí" : "No"}`);
+    lines.push(`Recetario Solidario: ${data.recetarioAdhered ? "S�" : "No"}`);
   }
 
   if (totals.scenarioLines.length > 0) {
@@ -4115,6 +4526,7 @@ function summarizeLookupNote(note) {
 function buildOperationalSummaryText(data) {
   const summary = data.currentSummary || buildSummaryPayload(data);
   const hasDraft = Boolean(data?.currentItemDraft?.productTitle);
+  const allowsAddMore = allowsSummaryAddMore(data);
   const lines = [];
 
   if (hasDraft) {
@@ -4138,7 +4550,7 @@ function buildOperationalSummaryText(data) {
       lines.push(...summary.alternatives.slice(0, 3).map(option => `  ${option.title}`));
     }
     lines.push(`- Productos en el pedido: ${summary.cartItems || 1}`);
-    lines.push("¿Querés agregar algo más o terminar la compra?");
+    lines.push(allowsAddMore ? "¿Querés agregar algo más o terminar la compra?" : "¿Querés terminar la compra?");
     return lines.join("\n");
   }
 
@@ -4164,7 +4576,7 @@ function buildOperationalSummaryText(data) {
     lines.push(...summary.pricingLines);
   }
 
-  lines.push("¿Querés agregar algo más o terminar la compra?");
+  lines.push(allowsAddMore ? "¿Querés agregar algo más o terminar la compra?" : "¿Querés terminar la compra?");
   return lines.join("\n");
 }
 
@@ -4172,6 +4584,13 @@ function summaryButtons(data) {
   const hasCart = Boolean(data?.currentItemDraft?.productTitle) || (Array.isArray(data?.itemsList) && data.itemsList.length > 0);
   if (!hasCart) {
     return [buildBackButton()];
+  }
+
+  if (!allowsSummaryAddMore(data)) {
+    return [
+      { id: "summary_finish", title: "Terminar compra" },
+      buildBackButton()
+    ];
   }
 
   return [
@@ -4272,7 +4691,10 @@ function shouldSanitizeTextKey(key) {
 
 function sanitizeVisibleText(value) {
   let result = String(value || "");
-  for (let attempt = 0; attempt < 4 && /[ÃÂ]/.test(result); attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!/[??]/.test(result)) {
+      break;
+    }
     try {
       const repaired = Buffer.from(result, "latin1").toString("utf8");
       if (!repaired || repaired === result) {
@@ -4284,8 +4706,102 @@ function sanitizeVisibleText(value) {
     }
   }
 
-  result = result.replace(/[\u00a0\u202f\u2007\u2060]/g, " ");
+  result = result.replace(/[   ⁠]/g, " ");
+  result = repairBrokenSpanish(result);
   result = normalizeUiFragments(result);
+  return result;
+}
+
+function repairBrokenSpanish(value) {
+  let result = String(value || "");
+  const replacements = [
+    ["�C�mo", "¿Cómo"],
+    ["�Qu�", "¿Qué"],
+    ["�Quer�s", "¿Querés"],
+    ["�Est�s", "¿Estás"],
+    ["�Quisiste", "¿Quisiste"],
+    ["hab�amos", "habíamos"],
+    ["quer�s", "querés"],
+    ["queres", "querés"],
+    ["escrib�", "escribí"],
+    ["Envi�mela", "Enviámela"],
+    ["Envi�", "Enviá"],
+    ["ac�", "acá"],
+    ["est�", "está"],
+    ["revisi�n", "revisión"],
+    ["operaci�n", "operación"],
+    ["opci�n", "opción"],
+    ["direcci�n", "dirección"],
+    ["d�bito", "débito"],
+    ["cr�dito", "crédito"],
+    ["P�gina", "Página"],
+    ["m�s", "más"],
+    ["continuar�", "continuará"],
+    ["atender�", "atenderá"],
+    ["S�", "Sí"],
+    ["Eleg�", "Elegí"],
+    ["Respond�", "Respondé"],
+    ["Toc�", "Tocá"],
+    ["Revis�", "Revisá"],
+    ["Pod�s", "Podés"],
+    ["prefer�s", "preferís"],
+    ["necesit�s", "necesitás"],
+    ["entend�", "entendí"],
+    ["volv�", "volvé"],
+    ["men�", "menú"],
+    ["d�a", "día"],
+    ["ah�", "ahí"],
+    ["complet�", "completá"],
+    ["eleg�", "elegí"],
+    ["encontr�", "encontré"],
+    ["presentaci�n", "presentación"],
+    ["atr�s", "atrás"],
+    ["Respondeme", "Respondéme"],
+    ["si, no o volv� a escribir", "sí, no o volvé a escribir"],
+    ["?C?mo", "¿Cómo"],
+    ["?Qu?", "¿Qué"],
+    ["?Quer?s", "¿Querés"],
+    ["?Est?s", "¿Estás"],
+    ["?Quisiste", "¿Quisiste"],
+    ["hab?amos", "habíamos"],
+    ["quer?s", "querés"],
+    ["escrib?", "escribí"],
+    ["Envi?mela", "Enviámela"],
+    ["Envi?", "Enviá"],
+    ["ac?", "acá"],
+    ["est?", "está"],
+    ["revisi?n", "revisión"],
+    ["operaci?n", "operación"],
+    ["opci?n", "opción"],
+    ["direcci?n", "dirección"],
+    ["d?bito", "débito"],
+    ["cr?dito", "crédito"],
+    ["P?gina", "Página"],
+    ["m?s", "más"],
+    ["S?", "Sí"],
+    ["Eleg?", "Elegí"],
+    ["Respond?", "Respondé"],
+    ["Toc?", "Tocá"],
+    ["Revis?", "Revisá"],
+    ["Pod?s", "Podés"],
+    ["prefer?s", "preferís"],
+    ["necesit?s", "necesitás"],
+    ["entend?", "entendí"],
+    ["volv?", "volvé"],
+    ["men?", "menú"],
+    ["d?a", "día"],
+    ["ah?", "ahí"],
+    ["complet?", "completá"],
+    ["eleg?", "elegí"],
+    ["encontr?", "encontré"],
+    ["presentaci?n", "presentación"],
+    ["atr?s", "atrás"]
+  ];
+
+  for (const [from, to] of replacements) {
+    result = result.split(from).join(to);
+  }
+
   return result;
 }
 
@@ -4297,15 +4813,7 @@ function normalizeUiFragments(value) {
     ["Que necesitas?", "¿Qué necesitás?"],
     ["Que queres agregar?", "¿Qué querés agregar?"],
     ["Estas adherido al Recetario Solidario?", "¿Estás adherido al Recetario Solidario?"],
-    ["Si queres volver, toca Volver.", "Si querés volver, tocá Volver."],
-    ["entend�", "entendí"],
-    ["escrib�", "escribí"],
-    ["hab�amos", "habíamos"],
-    ["operaci�n", "operación"],
-    ["revisi�n", "revisión"],
-    ["direcci�n", "dirección"],
-    ["d�bito", "débito"],
-    ["cr�dito", "crédito"],
+    ["Si queres volver, toca Volver al menu anterior.", "Si querés volver, tocá Volver al menú anterior."],
     ["Estas opciones", "estas opciones"],
     ["Pagina ", "Página "]
   ];
@@ -4315,81 +4823,6 @@ function normalizeUiFragments(value) {
   }
 
   return result;
-}
-
-function buildItemCheckoutLines(item, options = {}) {
-  const lines = [`- Producto: ${item?.productTitle || "No informado"}`];
-  lines.push(`  Stock: ${item?.stockStatus || "A pedido"}`);
-
-  if (Number.isFinite(Number(item?.publicPrice))) {
-    lines.push(`  Precio: ${formatCurrency(Number(item.publicPrice))}`);
-  } else {
-    lines.push("  Precio: pendiente");
-  }
-
-  const stockDetail = summarizeLookupNote(item?.note);
-  if (stockDetail && normalizeComparableStockText(stockDetail) !== normalizeComparableStockText(item?.stockStatus || "")) {
-    lines.push(`  Detalle: ${stockDetail}`);
-  }
-
-  const pricingLines = resolveItemPricingScenarios(item, options).map(formatPricingScenarioLine);
-  if (pricingLines.length > 0) {
-    lines.push("  Opciones de pago:");
-    lines.push(...pricingLines.map(line => `  ${line}`));
-  }
-
-  if (item?.coverageNote) {
-    lines.push(`  Nota: ${item.coverageNote}`);
-  }
-
-  if (item?.stockStatus === "sin stock" && Array.isArray(item?.alternatives) && item.alternatives.length > 0) {
-    lines.push("  Alternativas de la misma droga:");
-    lines.push(...item.alternatives.slice(0, 3).map(option => `  - ${option.title}`));
-  }
-
-  return lines;
-}
-
-function buildFinalCheckoutText(data) {
-  const items = Array.isArray(data?.itemsList) ? data.itemsList : [];
-  const includeRecetario = data?.recetarioAdhered === true;
-  const totals = buildCartTotals(items, { includeRecetario });
-  const lines = ["Resumen final:"];
-
-  if (items.length > 0) {
-    lines.push("Productos:");
-    for (const item of items) {
-      lines.push(...buildItemCheckoutLines(item, { includeRecetario }));
-    }
-  }
-
-  if (typeof data?.recetarioAdhered === "boolean") {
-    lines.push(`Recetario Solidario: ${data.recetarioAdhered ? "SÃ­" : "No"}`);
-  }
-
-  if (Number.isFinite(totals.listTotal)) {
-    lines.push("Totales del pedido:");
-    lines.push(`- Total: ${formatCurrency(totals.listTotal)}`);
-  }
-
-  if (totals.scenarioLines.length > 0) {
-    lines.push("Totales con descuentos:");
-    lines.push(...totals.scenarioLines);
-  }
-
-  lines.push(`Formas de pago: ${buildPaymentFormsText(items, { includeRecetario })}`);
-
-  if (data?.mode === "DELIVERY" && data?.deliveryDraft) {
-    lines.push("Delivery:");
-    lines.push(`- ${[data.deliveryDraft.firstName, data.deliveryDraft.lastName].filter(Boolean).join(" ")}`);
-    lines.push(`- ${data.deliveryDraft.addressLine}`);
-    lines.push(`- Entre calles: ${data.deliveryDraft.crossStreets}`);
-    lines.push(`- Barrio: ${data.deliveryDraft.neighborhood}`);
-    lines.push(`- Mail: ${data.deliveryDraft.email}`);
-  }
-
-  lines.push("En breve un asesor se va a comunicar por este medio para terminar la compra.");
-  return lines.join("\n");
 }
 
 function buildSummaryPayload(data) {
@@ -4434,7 +4867,7 @@ function buildSummaryPayload(data) {
     stockStatus: "",
     publicPrice: Number.isFinite(Number(totals.listTotal)) ? Number(totals.listTotal) : null,
     publicPriceLabel: "Total",
-    recetario: typeof data?.recetarioAdhered === "boolean" ? (data.recetarioAdhered ? "SÃ­" : "No") : "",
+    recetario: typeof data?.recetarioAdhered === "boolean" ? (data.recetarioAdhered ? "Sí" : "No") : "",
     referencePricing: null,
     pricingLines: totals.scenarioLines,
     coverageNote: "",
@@ -4458,7 +4891,7 @@ function buildOperationalSummaryText(data) {
   const lines = [];
 
   if (hasDraft) {
-    lines.push("RevisÃ¡ este producto:");
+    lines.push("Revisá este producto:");
     lines.push(`- Producto: ${summary.productTitle || "No informado"}`);
     lines.push(`- Stock: ${summary.stockStatus || "A pedido"}`);
 
@@ -4482,11 +4915,11 @@ function buildOperationalSummaryText(data) {
       lines.push(...summary.alternatives.slice(0, 3).map(option => `  ${option.title}`));
     }
     lines.push(`- Productos en el pedido: ${summary.cartItems || 1}`);
-    lines.push("Â¿QuerÃ©s agregar algo mÃ¡s o terminar la compra?");
+    lines.push("¿Querés agregar algo más o terminar la compra?");
     return lines.join("\n");
   }
 
-  lines.push("RevisÃ¡ tu pedido:");
+  lines.push("Revisá tu pedido:");
   for (const item of Array.isArray(summary.items) ? summary.items : []) {
     lines.push(...buildItemCheckoutLines(item, { includeRecetario: data?.recetarioAdhered === true }));
   }
@@ -4505,7 +4938,7 @@ function buildOperationalSummaryText(data) {
   }
 
   lines.push(`- Formas de pago: ${buildPaymentFormsText(Array.isArray(data?.itemsList) ? data.itemsList : [], { includeRecetario: data?.recetarioAdhered === true })}`);
-  lines.push("Â¿QuerÃ©s agregar algo mÃ¡s o terminar la compra?");
+  lines.push("¿Querés agregar algo más o terminar la compra?");
   return lines.join("\n");
 }
 
@@ -4520,66 +4953,329 @@ function snapshotSessionData(data) {
     branch: "Delko 1",
     orderType: String(input.orderType || ""),
     recipes: Number(input.recipes || 0),
-    items: Number(input.items || itemsList.length || 0)
+    items: Number(input.items || itemsList.length || 0),
+    waitingAdvisor: Boolean(input.waitingAdvisor),
+    advisorHandoffReason: String(input.advisorHandoffReason || ""),
+    manualAdvisorIntervened: Boolean(input.manualAdvisorIntervened),
+    finalized: Boolean(input.finalized)
   };
 }
 
 function resetSessions() {
   sessions.clear();
   profiles.clear();
+  recentInboundFingerprints.clear();
+}
+
+async function resetContactState(contactId, options = {}) {
+  if (!contactId) {
+    return;
+  }
+
+  const preserveProfile = Boolean(options && options.preserveProfile);
+  let restoredProfile = null;
+
+  if (preserveProfile) {
+    for (const candidate of buildSessionContactCandidates(contactId)) {
+      const existingProfile = profiles.get(candidate);
+      if (existingProfile && typeof existingProfile === "object") {
+        restoredProfile = JSON.parse(JSON.stringify(existingProfile));
+        break;
+      }
+
+      if (KV_ENABLED) {
+        const payload = await kvGetJson(buildStateKey(candidate));
+        if (payload?.profile && typeof payload.profile === "object") {
+          restoredProfile = JSON.parse(JSON.stringify(payload.profile));
+          break;
+        }
+      }
+    }
+  }
+
+  for (const candidate of buildSessionContactCandidates(contactId)) {
+    sessions.delete(candidate);
+    profiles.delete(candidate);
+    recentInboundFingerprints.delete(candidate);
+    for (const key of Array.from(recentInboundFingerprints.keys())) {
+      if (String(key).startsWith(`${candidate}::`)) {
+        recentInboundFingerprints.delete(key);
+      }
+    }
+    await kvDelete(buildStateKey(candidate));
+  }
+
+  const restoredSession = {
+    state: S.IDLE,
+    step: null,
+    lastTransition: null,
+    data: {},
+    fallback: 0,
+    updatedAt: Date.now()
+  };
+  const profileToPersist = preserveProfile && restoredProfile ? restoredProfile : null;
+
+  for (const candidate of buildSessionContactCandidates(contactId)) {
+    sessions.set(candidate, {
+      state: restoredSession.state,
+      step: restoredSession.step,
+      lastTransition: restoredSession.lastTransition,
+      data: {},
+      fallback: restoredSession.fallback,
+      updatedAt: restoredSession.updatedAt
+    });
+    if (profileToPersist) {
+      profiles.set(candidate, JSON.parse(JSON.stringify(profileToPersist)));
+    }
+    await persistState(candidate, sessions.get(candidate), profileToPersist);
+  }
+}
+
+async function getContactConversationState(contactId) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  const session = getSession(contactId);
+  return {
+    state: session.state,
+    step: session.step,
+    sessionData: snapshotSessionData(session.data)
+  };
+}
+
+async function closeContactConversation(contactId) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  const session = getSession(contactId);
+  const profile = getProfile(contactId);
+  const sessionData = {
+    ...snapshotSessionData(session.data),
+    waitingAdvisor: false,
+    advisorHandoffReason: "",
+    manualAdvisorIntervened: false
+  };
+
+  resetSession(session);
+  touchSession(contactId, session);
+  await persistState(contactId, session, profile);
+  return sessionData;
+}
+
+async function markAdvisorManualControl(contactId) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  const session = getSession(contactId);
+  const profile = getProfile(contactId);
+
+  if (!session.data || typeof session.data !== "object") {
+    session.data = {};
+  }
+
+  session.state = S.AGENT;
+  session.step = null;
+  session.lastTransition = null;
+  session.fallback = 0;
+  session.data.waitingAdvisor = true;
+  session.data.manualAdvisorIntervened = true;
+  session.data.finalized = false;
+  if (!String(session.data.advisorHandoffReason || "").trim()) {
+    session.data.advisorHandoffReason = "manual_advisor";
+  }
+
+  touchSession(contactId, session);
+  await persistState(contactId, session, profile);
+  return snapshotSessionData(session.data);
+}
+
+async function forceParticularSearchFlow(contactId, { contactName, mode = "DELIVERY" } = {}) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  const session = getSession(contactId);
+  const profile = getProfile(contactId, contactName);
+
+  initializeOrder(session, String(mode || "DELIVERY").trim().toUpperCase() === "MOSTRADOR" ? "MOSTRADOR" : "DELIVERY");
+  session.data.orderType = "PARTICULAR";
+  session.data.waitingAdvisor = false;
+  session.data.advisorHandoffReason = "";
+  session.data.manualAdvisorIntervened = false;
+  session.data.finalized = false;
+  if (hasRecentProductHistory(profile)) {
+    enableRecentProductHistoryOffer(session);
+  } else {
+    clearRecentProductHistoryOffer(session);
+  }
+  move(session, STEP.PARTICULAR_SEARCH_MODE);
+  touchSession(contactId, session);
+  await persistState(contactId, session, profile);
+  return buildSessionSnapshot(session);
+}
+
+function buildPromptChoiceFingerprint(contactId) {
+  const session = sessions.get(contactId);
+  const promptChoices = Array.isArray(session?.data?.promptChoices) ? session.data.promptChoices : [];
+  const choiceSignature = promptChoices
+    .map(choice => String(choice?.id || "").trim())
+    .filter(Boolean)
+    .join("|");
+
+  return [
+    String(session?.state || ""),
+    String(session?.step || ""),
+    String(session?.data?.mode || ""),
+    String(session?.data?.orderType || ""),
+    choiceSignature
+  ]
+    .filter(Boolean)
+    .join("::");
+}
+
+function markInboundFingerprint(contactId, text, timestamp = Date.now()) {
+  const normalizedText = normalizeChoiceLabel(text);
+  if (!contactId || !normalizedText) {
+    return false;
+  }
+
+  const safeTimestamp = Number(timestamp || 0) > 0 ? Number(timestamp) : Date.now();
+  const promptFingerprint = buildPromptChoiceFingerprint(contactId);
+  const key = `${contactId}::${promptFingerprint || "no_prompt"}::${normalizedText}`;
+  const coarseKey = `${contactId}::__coarse__::${normalizedText}`;
+  const previous = Number(recentInboundFingerprints.get(key) || 0);
+  const shouldUseCoarseFingerprint = !/^[a-z]$/i.test(normalizedText);
+  const coarsePrevious = shouldUseCoarseFingerprint ? Number(recentInboundFingerprints.get(coarseKey) || 0) : 0;
+  recentInboundFingerprints.set(key, safeTimestamp);
+  if (shouldUseCoarseFingerprint) {
+    recentInboundFingerprints.set(coarseKey, safeTimestamp);
+  }
+  return (
+    (previous > 0 && Math.abs(safeTimestamp - previous) <= DUPLICATE_INBOUND_WINDOW_MS) ||
+    (shouldUseCoarseFingerprint &&
+      coarsePrevious > 0 &&
+      Math.abs(safeTimestamp - coarsePrevious) <= COARSE_DUPLICATE_INBOUND_WINDOW_MS)
+  );
 }
 
 function sanitizeVisibleText(value) {
   let result = String(value || "");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!/[\u00c3\u00c2]/.test(result)) {
+      break;
+    }
+    try {
+      const repaired = Buffer.from(result, "latin1").toString("utf8");
+      if (!repaired || repaired === result) {
+        break;
+      }
+      result = repaired;
+    } catch (_error) {
+      break;
+    }
+  }
+
   result = result.replace(/[\u00a0\u202f\u2007\u2060]/g, " ");
-  result = repairMojibakeFragments(result);
+  result = repairBrokenSpanish(result);
   result = normalizeUiFragments(result);
   return result;
 }
 
-function repairMojibakeFragments(value) {
+function repairBrokenSpanish(value) {
   let result = String(value || "");
   const replacements = [
-    ["ÃƒÂ¡", "á"],
-    ["ÃƒÂ©", "é"],
-    ["ÃƒÂ­", "í"],
-    ["ÃƒÂ³", "ó"],
-    ["ÃƒÂº", "ú"],
-    ["ÃƒÂ±", "ñ"],
-    ["ÃƒÂ", "Á"],
-    ["ÃƒÂ‰", "É"],
-    ["ÃƒÂ", "Í"],
-    ["ÃƒÂ“", "Ó"],
-    ["ÃƒÂš", "Ú"],
-    ["ÃƒÂ‘", "Ñ"],
-    ["Ã¡", "á"],
-    ["Ã©", "é"],
-    ["Ã­", "í"],
-    ["Ã³", "ó"],
-    ["Ãº", "ú"],
-    ["Ã±", "ñ"],
-    ["Ã", "Á"],
-    ["Ã‰", "É"],
-    ["Ã", "Í"],
-    ["Ã“", "Ó"],
-    ["Ãš", "Ú"],
-    ["Ã‘", "Ñ"],
-    ["Ã¼", "ü"],
-    ["Ãœ", "Ü"],
-    ["Â¿", "¿"],
-    ["Â¡", "¡"],
-    ["Ã‚Â¿", "¿"],
-    ["Ã‚Â¡", "¡"],
-    ["Ã‚", ""],
-    ["ï¿½", ""]
+    ["\ufffdC\ufffdmo", "\u00bfC\u00f3mo"],
+    ["\ufffdQu\ufffd", "\u00bfQu\u00e9"],
+    ["\ufffdQuer\ufffds", "\u00bfQuer\u00e9s"],
+    ["\ufffdEst\ufffds", "\u00bfEst\u00e1s"],
+    ["\ufffdQuisiste", "\u00bfQuisiste"],
+    ["hab\ufffdamos", "hab\u00edamos"],
+    ["quer\ufffds", "quer\u00e9s"],
+    ["queres", "quer\u00e9s"],
+    ["escrib\ufffd", "escrib\u00ed"],
+    ["Envi\ufffdmela", "Envi\u00e1mela"],
+    ["Envi\ufffd", "Envi\u00e1"],
+    ["ac\ufffd", "ac\u00e1"],
+    ["est\ufffd", "est\u00e1"],
+    ["revisi\ufffdn", "revisi\u00f3n"],
+    ["operaci\ufffdn", "operaci\u00f3n"],
+    ["opci\ufffdn", "opci\u00f3n"],
+    ["direcci\ufffdn", "direcci\u00f3n"],
+    ["d\ufffdbito", "d\u00e9bito"],
+    ["cr\ufffddito", "cr\u00e9dito"],
+    ["P\ufffdgina", "P\u00e1gina"],
+    ["m\ufffds", "m\u00e1s"],
+    ["continuar\ufffd", "continuar\u00e1"],
+    ["atender\ufffd", "atender\u00e1"],
+    ["S\ufffd", "S\u00ed"],
+    ["Eleg\ufffd", "Eleg\u00ed"],
+    ["Respond\ufffd", "Respond\u00e9"],
+    ["Toc\ufffd", "Toc\u00e1"],
+    ["Revis\ufffd", "Revis\u00e1"],
+    ["Pod\ufffds", "Pod\u00e9s"],
+    ["prefer\ufffds", "prefer\u00eds"],
+    ["necesit\ufffds", "necesit\u00e1s"],
+    ["entend\ufffd", "entend\u00ed"],
+    ["volv\ufffd", "volv\u00e9"],
+    ["men\ufffd", "men\u00fa"],
+    ["d\ufffda", "d\u00eda"],
+    ["ah\ufffd", "ah\u00ed"],
+    ["complet\ufffd", "complet\u00e1"],
+    ["eleg\ufffd", "eleg\u00ed"],
+    ["encontr\ufffd", "encontr\u00e9"],
+    ["presentaci\ufffdn", "presentaci\u00f3n"],
+    ["atr\ufffds", "atr\u00e1s"],
+    ["?C?mo", "\u00bfC\u00f3mo"],
+    ["?Qu?", "\u00bfQu\u00e9"],
+    ["?Quer?s", "\u00bfQuer\u00e9s"],
+    ["?Est?s", "\u00bfEst\u00e1s"],
+    ["?Quisiste", "\u00bfQuisiste"],
+    ["hab?amos", "hab\u00edamos"],
+    ["quer?s", "quer\u00e9s"],
+    ["escrib?", "escrib\u00ed"],
+    ["Envi?mela", "Envi\u00e1mela"],
+    ["Envi?", "Envi\u00e1"],
+    ["ac?", "ac\u00e1"],
+    ["est?", "est\u00e1"],
+    ["revisi?n", "revisi\u00f3n"],
+    ["operaci?n", "operaci\u00f3n"],
+    ["opci?n", "opci\u00f3n"],
+    ["direcci?n", "direcci\u00f3n"],
+    ["d?bito", "d\u00e9bito"],
+    ["cr?dito", "cr\u00e9dito"],
+    ["P?gina", "P\u00e1gina"],
+    ["m?s", "m\u00e1s"],
+    ["S?", "S\u00ed"],
+    ["Eleg?", "Eleg\u00ed"],
+    ["Respond?", "Respond\u00e9"],
+    ["Toc?", "Toc\u00e1"],
+    ["Revis?", "Revis\u00e1"],
+    ["Pod?s", "Pod\u00e9s"],
+    ["c\ufffdmodo", "c\u00f3modo"],
+    ["c?modo", "c\u00f3modo"],
+    ["prefer?s", "prefer\u00eds"],
+    ["necesit?s", "necesit\u00e1s"],
+    ["entend?", "entend\u00ed"],
+    ["volv?", "volv\u00e9"],
+    ["men?", "men\u00fa"],
+    ["d?a", "d\u00eda"],
+    ["ah?", "ah\u00ed"],
+    ["complet?", "complet\u00e1"],
+    ["eleg?", "eleg\u00ed"],
+    ["encontr?", "encontr\u00e9"],
+    ["presentaci?n", "presentaci\u00f3n"],
+    ["atr?s", "atr\u00e1s"],
   ];
 
-  let previous = "";
-  while (result !== previous) {
-    previous = result;
-    for (const [from, to] of replacements) {
-      result = result.split(from).join(to);
-    }
+  for (const [from, to] of replacements) {
+    result = result.split(from).join(to);
   }
 
   return result;
@@ -4588,22 +5284,18 @@ function repairMojibakeFragments(value) {
 function normalizeUiFragments(value) {
   let result = String(value || "");
   const replacements = [
-    ["Revisa este producto:", "Revisá este producto:"],
-    ["Revisa tu pedido:", "Revisá tu pedido:"],
-    ["Que necesitas?", "¿Qué necesitás?"],
-    ["Que queres agregar?", "¿Qué querés agregar?"],
-    ["Estas adherido al Recetario Solidario?", "¿Estás adherido al Recetario Solidario?"],
-    ["Si queres volver, toca Volver.", "Si querés volver, tocá Volver."],
-    ["entend�", "entendí"],
-    ["escrib�", "escribí"],
-    ["hab�amos", "habíamos"],
-    ["operaci�n", "operación"],
-    ["revisi�n", "revisión"],
-    ["direcci�n", "dirección"],
-    ["d�bito", "débito"],
-    ["cr�dito", "crédito"],
+    ["Revisa este producto:", "Revis\u00e1 este producto:"],
+    ["Revisa tu pedido:", "Revis\u00e1 tu pedido:"],
+    ["Que necesitas?", "\u00bfQu\u00e9 necesit\u00e1s?"],
+    ["Que queres agregar?", "\u00bfQu\u00e9 quer\u00e9s agregar?"],
+    ["Estas adherido al Recetario Solidario?", "\u00bfEst\u00e1s adherido al Recetario Solidario?"],
+    ["\u00bfestas adherido al Recetario Solidario?", "\u00bfEst\u00e1s adherido al Recetario Solidario?"],
+    ["\u00bfest\u00e1s adherido al Recetario Solidario?", "\u00bfEst\u00e1s adherido al Recetario Solidario?"],
+    ["\ufffdest\ufffds adherido al Recetario Solidario?", "\u00bfEst\u00e1s adherido al Recetario Solidario?"],
+    ["Si queres volver, toca Volver al menu anterior.", "Si quer\u00e9s volver, toc\u00e1 Volver al men\u00fa anterior."],
+    ["Si queres volver, elegi una opcion.", "Si quer\u00e9s volver, eleg\u00ed una opci\u00f3n."],
     ["Estas opciones", "estas opciones"],
-    ["Pagina ", "Página "]
+    ["Pagina ", "P\u00e1gina "]
   ];
 
   for (const [from, to] of replacements) {
@@ -4725,48 +5417,73 @@ function buildOperationalSummaryText(data) {
   }
 
   lines.push(`- Formas de pago: ${buildPaymentFormsText(Array.isArray(data?.itemsList) ? data.itemsList : [], { includeRecetario: data?.recetarioAdhered === true })}`);
-  lines.push("¿Querés agregar algo más o terminar la compra?");
+  lines.push(allowsAddMore ? "¿Querés agregar algo más o terminar la compra?" : "¿Querés terminar la compra?");
   return lines.join("\n");
+}
+
+function allowsSummaryAddMore(data) {
+  return String(data?.orderType || "").trim().toUpperCase() !== "VACUNAS";
+}
+
+function pushSectionHeading(lines, title) {
+  if (lines.length > 0 && lines[lines.length - 1] !== "") {
+    lines.push("");
+  }
+  lines.push(`*${title}*`);
+  lines.push("----------------");
+}
+
+function formatPlainEmail(value) {
+  const email = trim(String(value || ""), 160);
+  if (!email) {
+    return "";
+  }
+  return email.replace(/@/g, "@\u200b").replace(/\./g, ".\u200b");
 }
 
 function buildFinalCheckoutText(data) {
   const items = Array.isArray(data?.itemsList) ? data.itemsList : [];
   const includeRecetario = data?.recetarioAdhered === true;
   const totals = buildCartTotals(items, { includeRecetario });
-  const lines = ["Resumen final:"];
+  const lines = [];
+
+  pushSectionHeading(lines, "Resumen final");
 
   if (items.length > 0) {
-    lines.push("Productos:");
+    pushSectionHeading(lines, "Productos");
     for (const item of items) {
       lines.push(...buildItemCheckoutLines(item, { includeRecetario }));
     }
   }
 
   if (typeof data?.recetarioAdhered === "boolean") {
-    lines.push(`Recetario Solidario: ${data.recetarioAdhered ? "Sí" : "No"}`);
+    pushSectionHeading(lines, "Recetario Solidario");
+    lines.push(data.recetarioAdhered ? "Sí" : "No");
   }
 
   if (Number.isFinite(totals.listTotal)) {
-    lines.push("Totales del pedido:");
+    pushSectionHeading(lines, "Totales del pedido");
     lines.push(`- Total: ${formatCurrency(totals.listTotal)}`);
   }
 
   if (totals.scenarioLines.length > 0) {
-    lines.push("Totales con descuentos:");
+    pushSectionHeading(lines, "Totales con descuentos");
     lines.push(...totals.scenarioLines);
   }
 
-  lines.push(`Formas de pago: ${buildPaymentFormsText(items, { includeRecetario })}`);
+  pushSectionHeading(lines, "Formas de pago");
+  lines.push(buildPaymentFormsText(items, { includeRecetario }));
 
   if (data?.mode === "DELIVERY" && data?.deliveryDraft) {
-    lines.push("Delivery:");
+    pushSectionHeading(lines, "Delivery");
     lines.push(`- ${[data.deliveryDraft.firstName, data.deliveryDraft.lastName].filter(Boolean).join(" ")}`);
     lines.push(`- ${data.deliveryDraft.addressLine}`);
     lines.push(`- Entre calles: ${data.deliveryDraft.crossStreets}`);
     lines.push(`- Barrio: ${data.deliveryDraft.neighborhood}`);
-    lines.push(`- Mail: ${data.deliveryDraft.email}`);
+    lines.push(`- Mail: ${formatPlainEmail(data.deliveryDraft.email)}`);
   }
 
+  lines.push("");
   lines.push("En breve un asesor se va a comunicar por este medio para terminar la compra.");
   return lines.join("\n");
 }
@@ -4787,21 +5504,21 @@ function getOrderTypeChatLabel(orderType) {
   const value = String(orderType || "").trim().toUpperCase();
   if (value === "PARTICULAR") return "Particular";
   if (value === "OBRA SOCIAL") return "Obra social";
-  if (value === "VACUNAS") return "Programa obesidad y diabetes";
+  if (value === "VACUNAS") return "Programa de sobrepeso y diabetes";
   if (value === "MOSTRADOR") return "Mostrador";
   return "";
 }
 
 function buildParticularSearchModePrompt() {
-  return buildBranchPrompt("Particular", "Â¿CÃ³mo querÃ©s buscar?");
+  return buildBranchPrompt("Particular", "Elegí cómo querés buscar el producto.");
 }
 
 function buildRecentProductHistoryPrompt(profile) {
   const addressLine = trim(profile?.delivery?.addressLine || "", 120);
-  const addressSuffix = addressLine ? `Tambien tengo guardada tu direccion en ${addressLine}.` : "";
+  const addressSuffix = addressLine ? `También tengo guardada tu dirección en ${addressLine}.` : "";
   return [
-    buildBranchPrompt("Particular", "Tengo guardados productos de tu ultimo pedido."),
-    "Si queres, elegi uno para pedirlo de nuevo o busca otro distinto.",
+    buildBranchPrompt("Particular", "Tengo guardados productos de tu último pedido."),
+    "Si querés, elegí uno para pedirlo de nuevo o buscá otro distinto.",
     addressSuffix
   ]
     .filter(Boolean)
@@ -4812,14 +5529,14 @@ function buildRecentProductHistoryPrompt(profile) {
 function buildProductWizardStartActions(_runtime, introText) {
   const basePrompt = String(introText || buildProductLabHelpText()).trim();
   return buildPromptActions(
-    buildBranchPrompt("Programa obesidad y diabetes", basePrompt),
+    buildBranchPrompt("Programa de sobrepeso y diabetes", basePrompt),
     productLabButtons(),
     [buildBackButton()]
   );
 }
 
 function buildRecipeUploadActions(session, runtime) {
-  const prompt = nodeText(runtime, "receta_upload", "EnviÃ¡ tu receta.");
+  const prompt = nodeText(runtime, "receta_upload", "Enviá tu receta.");
   return [buildRecipeUploadNavigation(buildBranchPrompt(getOrderTypeChatLabel(session?.data?.orderType), prompt))];
 }
 
@@ -4832,6 +5549,7 @@ function parseServiceTypeChoice(input) {
     input.buttonId === "service_treatment" ||
     input.normalized.includes("vacunas") ||
     input.normalized.includes("vacuna") ||
+    input.normalized.includes("sobrepeso") ||
     input.normalized.includes("obesidad") ||
     input.normalized.includes("diabetes") ||
     input.normalized.includes("programa") ||
@@ -4860,6 +5578,12 @@ module.exports = {
     getProfileSnapshot(contactId) {
       const profile = profiles.get(contactId);
       return profile ? JSON.parse(JSON.stringify(profile)) : null;
-    }
+    },
+    resetContactState,
+    markInboundFingerprint,
+    getContactConversationState,
+    closeContactConversation,
+    markAdvisorManualControl,
+    forceParticularSearchFlow
   }
 };

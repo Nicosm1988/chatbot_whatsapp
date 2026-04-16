@@ -62,7 +62,7 @@ test("arma tags y resumen inferidos para conversaciones historicas", () => {
     ]
   );
 
-  assert.equal(conversation.summary, "Delivery | Programa obesidad y diabetes");
+  assert.equal(conversation.summary, "Delivery | Programa de sobrepeso y diabetes");
   assert.ok(conversation.tags.includes("delivery"));
   assert.ok(conversation.tags.includes("programa_obesidad_y_diabetes"));
   assert.ok(conversation.tags.includes("test_run"));

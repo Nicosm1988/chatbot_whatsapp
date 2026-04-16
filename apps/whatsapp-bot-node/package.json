@@ -8,13 +8,23 @@
     "dev": "node src/index.js",
     "start": "NODE_ENV=production node src/index.js",
     "test": "node --test --test-isolation=none src/*.test.js",
-    "deploy:prod": "bash scripts/deploy_and_sync_webhook.sh"
+    "deploy:prod": "node scripts/deploy_and_sync_webhook.js",
+    "refresh:plex-drugs": "node scripts/generate_plex_drug_snapshot.js",
+    "lab:restart": "powershell -ExecutionPolicy Bypass -File scripts/restart_whatsapp_lab.ps1",
+    "lab:watch": "powershell -ExecutionPolicy Bypass -File scripts/run_whatsapp_bot_forever.ps1",
+    "lab:install-startup": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_startup.ps1",
+    "lab:start-silent": "powershell -ExecutionPolicy Bypass -File scripts/start_whatsapp_bot_silent.ps1",
+    "lab:install-shortcut": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_desktop_shortcut.ps1",
+    "lab:validate": "powershell -ExecutionPolicy Bypass -File scripts/validate_whatsapp_lab.ps1"
   },
   "dependencies": {
     "axios": "^1.8.4",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "openai": "^6.25.0",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "1.32.0"
   }
 }
