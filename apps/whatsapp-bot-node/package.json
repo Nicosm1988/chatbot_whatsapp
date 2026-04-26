@@ -15,7 +15,8 @@
     "lab:install-startup": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_startup.ps1",
     "lab:start-silent": "powershell -ExecutionPolicy Bypass -File scripts/start_whatsapp_bot_silent.ps1",
     "lab:install-shortcut": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_desktop_shortcut.ps1",
-    "lab:validate": "powershell -ExecutionPolicy Bypass -File scripts/validate_whatsapp_lab.ps1"
+    "lab:validate": "powershell -ExecutionPolicy Bypass -File scripts/validate_whatsapp_lab.ps1",
+    "lab:check-pharmacy": "powershell -ExecutionPolicy Bypass -File scripts/check_pharmacy_connectivity.ps1"
   },
   "dependencies": {
     "axios": "^1.8.4",

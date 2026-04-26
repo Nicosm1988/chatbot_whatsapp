@@ -108,6 +108,7 @@ Esta guia sirve para ubicar rapido cada parte del proyecto desde GitHub.
 - `npm run lab:install-startup`
 - `npm run lab:install-shortcut`
 - `npm run lab:validate`
+- `npm run lab:check-pharmacy`
 
 ## Rutas utiles del sistema
 

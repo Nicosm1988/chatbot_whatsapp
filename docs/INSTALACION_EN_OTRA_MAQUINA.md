@@ -32,6 +32,7 @@ Esta guia deja el proyecto listo para bajar, instalar y levantar en otra PC Wind
 - Node.js 22
 - Git
 - Chrome o Edge
+- Radmin VPN o la VPN que haya dejado el proveedor, si la API de farmacia no responde desde fuera de la red original
 - Acceso a las credenciales de:
   - Postgres o Neon
   - Plex Center / sistema de farmacia
@@ -67,6 +68,11 @@ Desde `apps/whatsapp-bot-node`:
 Copy-Item .env.example .env.local
 ```
 
+Importante:
+- `.env.local` no se sube a GitHub a proposito.
+- Para que la nueva PC quede realmente lista, copia `apps/whatsapp-bot-node/.env.local` desde una PC ya operativa o vuelve a cargar a mano las credenciales.
+- Tampoco se sube la sesion autenticada de WhatsApp Web; en la nueva PC puede hacer falta reescanear QR.
+
 ## 6. Variables minimas segun el modo
 
 ### Modo web local recomendado
@@ -88,6 +94,11 @@ PHARMACY_SYSTEM_API_USERNAME=
 PHARMACY_SYSTEM_API_PASSWORD=
 PHARMACY_SYSTEM_API_BRANCH_IDS=1
 ```
+
+Nota:
+- el host documentado para farmacia en este proyecto es `http://delko.plex25center.com.ar:8081`
+- si una PC nueva no llega a ese host, la causa mas probable es que falte conectarse a la VPN de la farmacia
+- por la evidencia operativa actual, esa VPN podria ser `Radmin VPN`
 
 ### Modo cloud
 
@@ -112,7 +123,24 @@ WEBHOOK_BASE_URL=
 - `WHATSAPP_WEB_AUTH_DATA_PATH`: opcional. Si no lo defines, el runtime usa `%LOCALAPPDATA%\DelkoBot\wwebjs-auth`.
 - `WHATSAPP_WEB_EXECUTABLE_PATH`: opcional si quieres forzar un browser especifico.
 
-## 7. Arranque recomendado en otra PC
+## 7. Conectividad con farmacia antes del arranque
+
+Si la farmacia o el proveedor les dejaron una VPN en la PC actual, conectala primero tambien en la nueva maquina.
+
+Chequeo recomendado desde `apps/whatsapp-bot-node`:
+
+```powershell
+npm run lab:check-pharmacy
+```
+
+Este chequeo te dice si:
+- el host de farmacia resuelve
+- el puerto responde
+- las credenciales del `.env.local` pueden autenticarse
+
+Si falla por red y en la PC actual usan `Radmin VPN`, instalalo tambien en la nueva PC, entra a la red que les dejaron y volve a correr el chequeo.
+
+## 8. Arranque recomendado en otra PC
 
 Desde `apps/whatsapp-bot-node`:
 
@@ -128,7 +156,7 @@ Luego abre:
 - `http://localhost:3000/api/system/ready`
 - `http://localhost:3000/api/system/liveness`
 
-## 8. Arranque para operadores no tecnicos
+## 9. Arranque para operadores no tecnicos
 
 Desde `apps/whatsapp-bot-node`:
 
@@ -143,8 +171,9 @@ Scripts disponibles:
 - `npm run lab:restart`
 - `npm run lab:watch`
 - `npm run lab:validate`
+- `npm run lab:check-pharmacy`
 
-## 9. Validaciones minimas despues de instalar
+## 10. Validaciones minimas despues de instalar
 
 ```powershell
 npm test
@@ -157,7 +186,7 @@ Checks rapidos:
 - `/api/system/liveness` debe quedar en `ok: true` cuando la sesion este lista
 - `/api/system/storage` debe mostrar storage persistente si `DATABASE_URL` esta bien
 
-## 10. Donde quedan los datos locales del navegador
+## 11. Donde quedan los datos locales del navegador
 
 Por defecto Windows usa:
 
@@ -165,7 +194,7 @@ Por defecto Windows usa:
 - Perfil del browser remoto: `%LOCALAPPDATA%\DelkoBot\chrome-remote-profile`
 - Assets locales de la extension: `%LOCALAPPDATA%\DelkoBot\browser-assets\whatsapp-web-companion-extension`
 
-## 11. Si tambien quieres desplegar
+## 12. Si tambien quieres desplegar
 
 Desde `apps/whatsapp-bot-node`:
 

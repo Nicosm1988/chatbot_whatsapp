@@ -1,6 +1,34 @@
 # Project Memory - WhatsApp Bot Farmacia Delko
 
-Last update: 2026-04-16
+Last update: 2026-04-25
+
+## New-machine install hardening and VPN note on 2026-04-25
+- Hardened the GitHub handoff so another Windows machine can detect pharmacy-network issues before booting the bot:
+  - added connectivity checker:
+    - `apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1`
+  - added npm shortcut:
+    - `npm run lab:check-pharmacy`
+- Refreshed the fresh-install docs so the hidden local prerequisites are explicit:
+  - `README.md`
+  - `docs/INSTALACION_EN_OTRA_MAQUINA.md`
+  - `docs/CLIENT_RUNBOOK.md`
+  - `docs/GUIA_GITHUB_Y_REPOSITORIO.md`
+  - `apps/whatsapp-bot-node/.env.example`
+- Locked the new-machine expectations more honestly:
+  - `apps/whatsapp-bot-node/.env.local` is intentionally not committed to GitHub
+  - the authenticated WhatsApp Web session is intentionally not committed to GitHub
+  - a fresh machine may need a new QR link even if the repo was cloned correctly
+- Added the current operator-network clue to the install/runbook docs:
+  - if `http://delko.plex25center.com.ar:8081` does not respond from another machine, connect the vendor VPN first
+  - the current operator clue points to `Radmin VPN`
+- Live local validation completed:
+  - `npm run lab:check-pharmacy`
+  - result:
+    - DNS OK
+    - TCP OK
+    - authenticated HTTP OK against `/wsplexcenter/sucursales`
+- Residual validation note kept explicit:
+  - `npm test` still shows three existing advisor-handoff runtime failures in `apps/whatsapp-bot-node/src/index.runtime.test.js`
 
 ## Power BI pharmacy API guide on 2026-04-16
 - Added a dedicated Power BI handoff and modeling guide:

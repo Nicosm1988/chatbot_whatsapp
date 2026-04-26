@@ -46,6 +46,11 @@ Variables opcionales utiles:
 - `KV_REST_API_TOKEN`
 - `CRON_SECRET`
 
+Nota operativa:
+- si la farmacia consulta por una PC nueva y el lookup deja de responder, antes de tocar el bot revisar si falta la VPN de la farmacia
+- la evidencia actual apunta a que podria estar usando `Radmin VPN`
+- chequeo rapido: `npm run lab:check-pharmacy`
+
 ## 4) Inicio recomendado en modo web
 
 Desde `apps/whatsapp-bot-node`:
@@ -107,6 +112,9 @@ Comportamiento:
   - correr `npm run lab:watch`
 - Si necesitas una validacion guiada:
   - correr `npm run lab:validate`
+- Si falla la conexion con farmacia:
+  - conectar la VPN de la farmacia si aplica
+  - correr `npm run lab:check-pharmacy`
 - Si el storage no persiste:
   - revisar `DATABASE_URL`
   - revisar `/api/system/storage`

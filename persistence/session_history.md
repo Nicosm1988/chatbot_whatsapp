@@ -1,5 +1,34 @@
 # Session History Log
 
+## 2026-04-25
+
+- Hardened the reinstall path for another Windows machine so pharmacy connectivity can be checked before starting the bot:
+  - added script:
+    - `apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1`
+  - added npm shortcut:
+    - `npm run lab:check-pharmacy`
+- Refreshed the repo docs that a fresh clone will actually use:
+  - `README.md`
+  - `docs/INSTALACION_EN_OTRA_MAQUINA.md`
+  - `docs/CLIENT_RUNBOOK.md`
+  - `docs/GUIA_GITHUB_Y_REPOSITORIO.md`
+  - `apps/whatsapp-bot-node/.env.example`
+- Documented the operational reality of a fresh machine more clearly:
+  - `.env.local` is intentionally excluded from GitHub
+  - WhatsApp Web authenticated session data is intentionally machine-local
+  - a new machine may need a fresh QR link
+- Added the current likely network prerequisite:
+  - if `http://delko.plex25center.com.ar:8081` is unreachable from another PC, connect the vendor VPN first
+  - the current operator clue points to `Radmin VPN`
+- Live validation completed:
+  - `npm run lab:check-pharmacy` returned:
+    - DNS OK
+    - TCP OK
+    - authenticated HTTP OK
+- Residual validation status kept explicit:
+  - `npm test` still reports 3 existing failures in `src/index.runtime.test.js` around post-summary advisor handoff
+  - the new install/VPN work did not modify runtime logic
+
 ## 2026-04-16
 
 - Added a dedicated Power BI implementation and handoff guide for the pharmacy software:

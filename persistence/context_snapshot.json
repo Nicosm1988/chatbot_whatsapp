@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-04-16T12:30:00-03:00",
+    "lastUpdated": "2026-04-25T12:00:00-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -13,6 +13,7 @@
         "clientRunbook": "docs/CLIENT_RUNBOOK.md",
         "neonMigrationGuide": "docs/NEON_MIGRATION.md",
         "powerBiGuide": "docs/POWER_BI_FARMACIA.md",
+        "pharmacyConnectivityCheckScript": "apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1",
         "productionUrl": "https://whatsapp-bot-node-chatbot1.vercel.app",
         "documentedNodeVersion": "22"
     },
@@ -105,6 +106,7 @@
                 "connectedBrowserRestartScript": "apps/whatsapp-bot-node/scripts/restart_whatsapp_lab.ps1",
                 "connectedBrowserWatchdogScript": "apps/whatsapp-bot-node/scripts/run_whatsapp_bot_forever.ps1",
                 "connectedBrowserStartupInstallerScript": "apps/whatsapp-bot-node/scripts/install_whatsapp_bot_startup.ps1",
+                "pharmacyConnectivityCheckScript": "apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1",
                 "qrSurface": "http://localhost:3000/whatsapp-qr",
                 "duplicateWhatsAppPageConflictResolved": true,
                 "appRootEnvLoadingFixed": true,
@@ -124,6 +126,10 @@
                 "localFastAuditDetached": true,
                 "localPlexCredentialsLoaded": true,
                 "localPlexLiveConnectionValidated": true,
+                "freshMachineMayNeedVendorVpn": true,
+                "observedVendorVpnClient": "Radmin VPN",
+                "envLocalNotCommittedToGitHub": true,
+                "whatsappWebSessionNotCommittedToGitHub": true,
                 "localPlexSelectedBranchIds": [
                     "1"
                 ],
