@@ -19,8 +19,12 @@ Last update: 2026-07-13
   - stop automated or scripted browser access to Meta account-management surfaces
   - do not create another portfolio or attempt to bypass the restriction
   - do not repeat person invitations while the restriction remains
-  - the owner must secure the exposed account from a familiar device by changing the password and enabling her own two-factor authentication
+  - the owner account was secured from a familiar device on 2026-07-13 after rotating the exposed password, enabling owner two-factor authentication and reviewing active sessions
   - any review request must be truthful and submitted from the owner's normal session after account security is restored
+- Immediate next step:
+  - open `Solicitar revisión` once from the owner's normal session
+  - inspect every question before submitting
+  - describe any assisted/automated browser use truthfully and confirm it was stopped
 - After reinstatement, continue with a clean pharmacy-owned Meta app, WABA, pharmacy phone number and system-user token; do not reuse the rejected legacy lab WABA or test number.
 - The production backend remains technically prepared for Meta Cloud API, but the final App Secret/signature enforcement and new pharmacy-owned Meta credentials are still pending.
 

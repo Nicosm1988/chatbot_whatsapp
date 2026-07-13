@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-07-13T19:59:41-03:00",
+    "lastUpdated": "2026-07-13T20:04:08-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -573,6 +573,13 @@
         "operatorInviteStatus": "blocked_before_invitation_creation",
         "operatorTwoFactorEnabled": true,
         "pendingSentRequests": false,
+        "ownerAccountSecurity": {
+            "status": "completed",
+            "confirmedAt": "2026-07-13T20:04:08-03:00",
+            "passwordRotated": true,
+            "ownerTwoFactorEnabled": true,
+            "activeSessionsReviewed": true
+        },
         "portfolioRestriction": {
             "active": true,
             "detectedAt": "2026-07-13",
@@ -591,6 +598,7 @@
             "submit_one_truthful_review_request",
             "resume_meta_app_waba_phone_setup_after_reinstatement"
         ],
+        "nextAction": "open_review_form_once_and_inspect_before_submission",
         "legacyLabAssetsReusable": false,
         "productionAppSecretPending": true,
         "signatureEnforcementPending": true

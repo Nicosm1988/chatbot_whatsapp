@@ -18,6 +18,11 @@
   - secure the owner account from a familiar device
   - submit one truthful review request
   - resume app/WABA/phone onboarding only after reinstatement
+- Owner account security was completed and confirmed on 2026-07-13:
+  - exposed password rotated
+  - owner two-factor authentication enabled
+  - active sessions reviewed
+- The next controlled action is to open the review form once, inspect its exact questions and avoid submitting until the answers have been checked.
 - The legacy lab WABA/test number remains unsuitable for Farmacia Delko; the production backend still needs the new pharmacy-owned Meta assets and App Secret before official go-live.
 
 ## 2026-04-16
