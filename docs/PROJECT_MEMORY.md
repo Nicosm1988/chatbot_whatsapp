@@ -21,10 +21,14 @@ Last update: 2026-07-13
   - do not repeat person invitations while the restriction remains
   - the owner account was secured from a familiar device on 2026-07-13 after rotating the exposed password, enabling owner two-factor authentication and reviewing active sessions
   - any review request must be truthful and submitted from the owner's normal session after account security is restored
-- Immediate next step:
-  - open `Solicitar revisión` once from the owner's normal session
-  - inspect every question before submitting
-  - describe any assisted/automated browser use truthfully and confirm it was stopped
+- Restriction review status:
+  - a review was submitted on 2026-07-13
+  - Meta's confirmation screen says the business remains restricted during review and shows an expected response window of up to four days
+  - the operator submitted personal contact/identity evidence instead of the owner's identity evidence
+  - this creates a possible identity mismatch because the operator invitation had not been accepted
+  - no personal document numbers or images are stored in the project
+  - do not upload more documents, submit another review or change business assets while the case is pending
+  - if Meta requests clarification or rejects the review, respond truthfully and use the owner/business evidence Meta specifically requests
 - After reinstatement, continue with a clean pharmacy-owned Meta app, WABA, pharmacy phone number and system-user token; do not reuse the rejected legacy lab WABA or test number.
 - The production backend remains technically prepared for Meta Cloud API, but the final App Secret/signature enforcement and new pharmacy-owned Meta credentials are still pending.
 

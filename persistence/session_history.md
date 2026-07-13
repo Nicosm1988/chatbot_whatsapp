@@ -22,7 +22,16 @@
   - exposed password rotated
   - owner two-factor authentication enabled
   - active sessions reviewed
-- The next controlled action is to open the review form once, inspect its exact questions and avoid submitting until the answers have been checked.
+- A restriction review was subsequently submitted on 2026-07-13:
+  - Meta shows the case as `En revisión`
+  - the confirmation screen states that the business remains restricted and shows a response window of up to four days
+  - the operator used personal contact/identity evidence rather than the owner's evidence
+  - this may create an identity mismatch because the operator had not been successfully added to the portfolio
+  - no personal document details are stored in the repo
+- Pending-review rule:
+  - do not submit additional documents or duplicate reviews
+  - do not retry invitations or create replacement assets
+  - wait for Meta's response and answer any follow-up truthfully with the owner/business evidence specifically requested
 - The legacy lab WABA/test number remains unsuitable for Farmacia Delko; the production backend still needs the new pharmacy-owned Meta assets and App Secret before official go-live.
 
 ## 2026-04-16
