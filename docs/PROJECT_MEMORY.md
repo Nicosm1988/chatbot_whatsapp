@@ -1,6 +1,28 @@
 # Project Memory - WhatsApp Bot Farmacia Delko
 
-Last update: 2026-04-16
+Last update: 2026-07-13
+
+## Meta Business restriction and official onboarding pause on 2026-07-13
+- Confirmed the legitimate Business Portfolio `Farmacia Delko` exists and the current owner account has full control.
+- Attempts to add the technical operator as a person failed before any invitation was created:
+  - the operator email is linked to the intended Facebook profile
+  - the operator profile status is good
+  - two-factor authentication was enabled
+  - a clean invitation used basic access, no temporary access and zero assigned assets
+  - the `Requests` and `Sent` views contained no pending request
+- Business Support Home exposed the actual platform blocker:
+  - Meta restricted `Farmacia Delko` on 2026-07-13
+  - the stated reason is suspected use or creation through automation that does not comply with Meta rules
+  - the visible restriction disables creating/publishing ads and using/sharing audiences
+- Official Meta/WhatsApp onboarding is paused until that restriction is reviewed and removed.
+- Compliance guardrails for the recovery:
+  - stop automated or scripted browser access to Meta account-management surfaces
+  - do not create another portfolio or attempt to bypass the restriction
+  - do not repeat person invitations while the restriction remains
+  - the owner must secure the exposed account from a familiar device by changing the password and enabling her own two-factor authentication
+  - any review request must be truthful and submitted from the owner's normal session after account security is restored
+- After reinstatement, continue with a clean pharmacy-owned Meta app, WABA, pharmacy phone number and system-user token; do not reuse the rejected legacy lab WABA or test number.
+- The production backend remains technically prepared for Meta Cloud API, but the final App Secret/signature enforcement and new pharmacy-owned Meta credentials are still pending.
 
 ## Power BI pharmacy API guide on 2026-04-16
 - Added a dedicated Power BI handoff and modeling guide:

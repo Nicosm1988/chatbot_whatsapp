@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-04-16T12:30:00-03:00",
+    "lastUpdated": "2026-07-13T19:59:41-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -566,7 +566,38 @@
         "lookupAdapter": "apps/whatsapp-bot-node/src/pharmacy_system_lookup.js",
         "stockUpdatedDocFile": "API_OnzeCenter_Documentacion_Actualizada.pdf"
     },
+    "metaOfficialOnboarding": {
+        "provider": "meta_cloud_api",
+        "businessPortfolio": "Farmacia Delko",
+        "ownerHasFullControl": true,
+        "operatorInviteStatus": "blocked_before_invitation_creation",
+        "operatorTwoFactorEnabled": true,
+        "pendingSentRequests": false,
+        "portfolioRestriction": {
+            "active": true,
+            "detectedAt": "2026-07-13",
+            "reasonShownByMeta": "suspected_non_compliant_automation",
+            "visibleEffects": [
+                "cannot_create_or_publish_ads",
+                "cannot_use_or_share_audiences"
+            ],
+            "officialOnboardingPaused": true
+        },
+        "recoveryPlan": [
+            "stop_automated_meta_account_management_access",
+            "do_not_bypass_or_create_replacement_portfolio",
+            "owner_changes_exposed_password_from_familiar_device",
+            "owner_enables_two_factor_authentication",
+            "submit_one_truthful_review_request",
+            "resume_meta_app_waba_phone_setup_after_reinstatement"
+        ],
+        "legacyLabAssetsReusable": false,
+        "productionAppSecretPending": true,
+        "signatureEnforcementPending": true
+    },
     "knownPriorities": [
+        "meta_business_restriction_review",
+        "owner_account_security_rotation",
         "plex_stock_high_page_403_fix",
         "whatsapp_app_secret_production",
         "meta_access_token_refresh_for_webhook_sync",

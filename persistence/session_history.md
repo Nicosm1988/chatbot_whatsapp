@@ -1,5 +1,25 @@
 # Session History Log
 
+## 2026-07-13
+
+- Recovered and audited the current official Meta Cloud API onboarding state for Farmacia Delko.
+- Confirmed the `Farmacia Delko` Business Portfolio exists with its current owner holding full control.
+- Diagnosed repeated failures when adding the technical operator:
+  - linked email and healthy Facebook profile confirmed
+  - operator two-factor authentication enabled
+  - clean basic-access invitation attempted with no temporary access and no assets
+  - no pending or sent request remained after the failures
+- Identified the root external blocker in Meta Business Support Home:
+  - Meta restricted the business portfolio on 2026-07-13 for suspected non-compliant automation
+  - the visible enforcement prevents advertising and audience use/sharing
+- Paused all external onboarding and invitation retries to avoid escalating enforcement.
+- Recovery path agreed:
+  - cease automated browser access to Meta management surfaces
+  - secure the owner account from a familiar device
+  - submit one truthful review request
+  - resume app/WABA/phone onboarding only after reinstatement
+- The legacy lab WABA/test number remains unsuitable for Farmacia Delko; the production backend still needs the new pharmacy-owned Meta assets and App Secret before official go-live.
+
 ## 2026-04-16
 
 - Added a dedicated Power BI implementation and handoff guide for the pharmacy software:
