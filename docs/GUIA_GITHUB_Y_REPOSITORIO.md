@@ -23,7 +23,8 @@ Esta guia sirve para ubicar rapido cada parte del proyecto desde GitHub.
   - corre `npm test`
   - despliega a Vercel
 - `.github/workflows/whatsapp-bot-inactivity-check.yml`
-  - pega a `/api/cron/inactivity` cada 5 minutos
+  - conserva una ejecución manual para diagnosticar el endpoint en modo Cloud
+  - en modo Web, el control cada 5 minutos corre dentro de la PC operativa
 
 ### App principal
 

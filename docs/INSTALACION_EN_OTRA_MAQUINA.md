@@ -77,9 +77,10 @@ Estas son las minimas para el laboratorio y la operacion con navegador conectado
 PORT=3000
 BUSINESS_DISPLAY_NAME=Farmacia Delko
 WHATSAPP_TRANSPORT=web
-WHATSAPP_MOCK_MODE=true
+WHATSAPP_MOCK_MODE=false
 WHATSAPP_WEB_AUTH_MODE=connected_browser
 WHATSAPP_WEB_BROWSER_URL=http://127.0.0.1:9222
+WHATSAPP_WEB_INACTIVITY_CHECK_INTERVAL_MS=300000
 AUDIT_STORAGE_PROVIDER=postgres
 AUDIT_ALLOW_MEMORY_FALLBACK=false
 DATABASE_URL=
@@ -88,6 +89,10 @@ PHARMACY_SYSTEM_API_USERNAME=
 PHARMACY_SYSTEM_API_PASSWORD=
 PHARMACY_SYSTEM_API_BRANCH_IDS=1
 ```
+
+Usa `WHATSAPP_MOCK_MODE=true` únicamente para una prueba sin enviar mensajes reales.
+
+Este modo usa una automatización no oficial de WhatsApp Web. Requiere una PC Windows encendida y con sesión iniciada, no tiene soporte de Meta y puede implicar restricción o pérdida de la cuenta asociada al número. Antes de vincular el número principal, la dueña debe conocer ese riesgo; para la primera validación conviene usar un número secundario no crítico.
 
 ### Modo cloud
 
@@ -106,7 +111,7 @@ WEBHOOK_BASE_URL=
 
 ### Variables operativas adicionales
 
-- `CRON_SECRET`: necesario para `GET /api/cron/inactivity` y GitHub Actions.
+- `CRON_SECRET`: sólo para invocar manualmente `GET /api/cron/inactivity`; el modo Web ejecuta el control de inactividad dentro de la PC local.
 - `KV_REST_API_URL` y `KV_REST_API_TOKEN`: solo si usas Upstash KV.
 - `OPENAI_API_KEY`: opcional.
 - `WHATSAPP_WEB_AUTH_DATA_PATH`: opcional. Si no lo defines, el runtime usa `%LOCALAPPDATA%\DelkoBot\wwebjs-auth`.
@@ -165,7 +170,7 @@ Por defecto Windows usa:
 - Perfil del browser remoto: `%LOCALAPPDATA%\DelkoBot\chrome-remote-profile`
 - Assets locales de la extension: `%LOCALAPPDATA%\DelkoBot\browser-assets\whatsapp-web-companion-extension`
 
-## 11. Si tambien quieres desplegar
+## 11. Si también quieres desplegar el modo Cloud
 
 Desde `apps/whatsapp-bot-node`:
 
@@ -183,6 +188,8 @@ Necesitas:
 - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
 - `WHATSAPP_BUSINESS_ACCOUNT_ID`
 - `WEBHOOK_BASE_URL`
+
+Este despliegue no reemplaza el proceso local de WhatsApp Web. No ejecutes la sincronización de webhook para activar el modo Web.
 
 Consulta tambien:
 

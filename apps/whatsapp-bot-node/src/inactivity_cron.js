@@ -4,9 +4,9 @@ const INACTIVITY_PROMPT_MINUTES = 15;
 function buildInactivityPromptAction() {
   return {
     type: "interactive",
-    text: "Seguis ahi? Queres que continuemos?",
+    text: "¿Seguís ahí? ¿Querés que continuemos?",
     buttons: [
-      { id: "inactivity_continue_yes", title: "Si" },
+      { id: "inactivity_continue_yes", title: "Sí" },
       { id: "inactivity_continue_no", title: "No" }
     ]
   };
@@ -63,6 +63,7 @@ async function processInactivityConversations({
   recordOutboundMessage,
   addConversationTag,
   recordFlowTransition,
+  rememberPromptActions = async () => {},
   onDispatchError = () => {},
   nowMs = Date.now()
 }) {
@@ -84,6 +85,7 @@ async function processInactivityConversations({
       const action = buildInactivityPromptAction();
       try {
         await dispatchAction(conversation.contactId, action);
+        await rememberPromptActions(conversation.contactId, action);
         await recordOutboundMessage({
           conversationId: conversation.id,
           action,

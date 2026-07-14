@@ -32,27 +32,67 @@ function makeContactId() {
   return `54911${Date.now()}${Math.floor(Math.random() * 1000)}@lid`;
 }
 
+function buttonMessage(id, title) {
+  return {
+    type: "interactive",
+    interactive: {
+      button_reply: { id, title }
+    }
+  };
+}
+
+function listMessage(id, title) {
+  return {
+    type: "interactive",
+    interactive: {
+      list_reply: { id, title }
+    }
+  };
+}
+
 async function driveCheckoutUntilAdvisorHold(contactId, contactName = "Cliente") {
-  const steps = [
-    "hola",
-    "A",
-    "B",
-    "A",
-    "A",
-    "B",
-    "B",
-    "B",
-    "Nico San Martin",
-    "nmarcosan@gmail.com",
-    "Coronel Diaz\nSoler y Paraguay\nRecoleta"
-  ];
-
-  let lastResult = null;
-  for (const inboundText of steps) {
-    lastResult = await conversationRules.nextBotReply({ contactId, contactName, inboundText });
-  }
-
-  return lastResult;
+  await conversationRules._private.resetContactState(contactId);
+  await conversationRules._private.forceParticularSearchFlow(contactId, { contactName, mode: "DELIVERY" });
+  await conversationRules.nextBotReply({ contactId, contactName, inboundText: "" });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "Buscar por nombre",
+    inboundMessage: buttonMessage("particular_search_name", "Buscar por nombre")
+  });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "Mounjaro 5 mg KwikPen"
+  });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "MOUNJARO 5 mg/0.6 mLx1 KwikPen",
+    inboundMessage: listMessage("particular_option_pick_0", "MOUNJARO 5 mg/0.6 mLx1 KwikPen")
+  });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "Terminar compra",
+    inboundMessage: buttonMessage("summary_finish", "Terminar compra")
+  });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "No",
+    inboundMessage: buttonMessage("recetario_no", "No")
+  });
+  await conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "Nico San Martin, nico@test.com"
+  });
+  return conversationRules.nextBotReply({
+    contactId,
+    contactName,
+    inboundText: "Coronel Diaz 123, entre Soler y Paraguay, Recoleta"
+  });
 }
 
 test("invalidar tracking no recicla generaciones viejas del mismo contacto", () => {

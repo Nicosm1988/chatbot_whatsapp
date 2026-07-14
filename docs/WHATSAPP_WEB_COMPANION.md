@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Mantener la operación dentro de WhatsApp Web sin obligar a la farmacia a trabajar con un CRM separado, pero sin depender de APIs no oficiales de WhatsApp para modificar el inbox nativo.
+Mantener la operación dentro de WhatsApp Web sin obligar a la farmacia a trabajar con un CRM separado. La extensión sólo presenta información operativa; no modifica el inbox mediante una API propia.
 
 ## Enfoque elegido
 
@@ -56,7 +56,11 @@ Archivos principales:
 
 - No escribe etiquetas nativas del inbox oficial de WhatsApp
 - No reemplaza el layout original de Meta
-- No depende de librerías no oficiales que automaticen WhatsApp Web
+- La extensión, por sí sola, no automatiza el envío de mensajes
+
+## Alcance y riesgo del bot
+
+La extensión companion y el transporte del bot son componentes distintos. El bot local sí usa `whatsapp-web.js` para leer y enviar mensajes desde la sesión vinculada. Ese transporte no es una integración oficial autorizada por WhatsApp, no tiene soporte ni SLA de Meta y puede ocasionar restricciones sobre la cuenta asociada al número. El modo oficial sigue siendo WhatsApp Business Platform/Cloud API.
 
 ## Instalación rápida
 

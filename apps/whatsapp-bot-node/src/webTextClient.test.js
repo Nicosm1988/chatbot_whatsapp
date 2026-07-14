@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { _private } = require("./webTextClient");
+const { buildInactivityPromptAction } = require("./inactivity_cron");
 
 test("el fallback de botones en modo web muestra letras y la instruccion en claro", () => {
   const text = _private.buildButtonFallbackText("Elegí una opción.", [
@@ -42,6 +43,15 @@ test("el fallback de listas en modo web separa productos y ayuda con formato cla
   assert.doesNotMatch(text, /\*C\) Volver a escribir\*/);
   assert.doesNotMatch(text, /\*D\) Contactar asesor\. El producto no está\*/);
   assert.match(text, /\*Respondé con la letra de la opción\.\*/);
+});
+
+test("el recordatorio de inactividad muestra Si y No con letras", () => {
+  const action = buildInactivityPromptAction();
+  const text = _private.buildButtonFallbackText(action.text, action.buttons);
+
+  assert.match(text, /¿Seguís ahí\? ¿Querés que continuemos\?/);
+  assert.match(text, /\*A\) Sí\*/);
+  assert.match(text, /\*B\) No\*/);
 });
 
 test("expone un helper para distinguir mensajes enviados por el bot", () => {

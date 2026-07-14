@@ -168,13 +168,6 @@ async function nextBotReply({ contactId, contactName, inboundText, inboundMessag
     session.step = null;
     session.fallback = 0;
     result = { actions: [{ type: "text", text: "Te derivamos con un asesor. Si querés volver al bot, escribí MENU." }] };
-  } else if (session.state === S.ORDER && session.step === STEP.RECETA_UPLOAD && !input.hasMedia) {
-    session.fallback = 0;
-    result = {
-      actions: [
-        buildRecipeUploadNavigation("Para seguir necesito la receta en foto o PDF. Enviámela por acá.")
-      ]
-    };
   } else if (session.state === S.AGENT) {
     result = session.data?.manualAdvisorIntervened
       ? { actions: [] }
@@ -412,11 +405,13 @@ async function executeOrderStep(step, session, profile, input, runtime, flowEngi
 
     case STEP.RECETA_UPLOAD:
       if (!input.hasMedia) {
+        const recipePrompt = "Para seguir necesito la receta en foto o PDF. Enviámela por acá.";
         return fallback(
           session,
-          "Para seguir necesito la receta en foto o PDF. Enviámela por acá.",
+          recipePrompt,
           nodeText(runtime, "receta_upload", "Enviá tu receta."),
-          buildRecipeUploadNavigation()
+          buildRecipeUploadNavigation(recipePrompt),
+          { interactiveOnly: true }
         );
       }
 
@@ -2185,10 +2180,13 @@ function buildCurrentWizardInteractive(session) {
   }
 }
 
-function fallback(session, shortText, helpText, helpInteractive) {
+function fallback(session, shortText, helpText, helpInteractive, options = {}) {
   session.fallback = (session.fallback || 0) + 1;
   const interactiveActions = Array.isArray(helpInteractive) ? helpInteractive.filter(Boolean) : (helpInteractive ? [helpInteractive] : []);
   if (session.fallback <= 2) {
+    if (options.interactiveOnly && interactiveActions.length > 0) {
+      return { actions: interactiveActions };
+    }
     const actions = [{ type: "text", text: buildFallbackReply(shortText, interactiveActions) }];
     if (interactiveActions.length > 0) {
       actions.push(...interactiveActions);
@@ -5121,6 +5119,24 @@ async function forceParticularSearchFlow(contactId, { contactName, mode = "DELIV
   return buildSessionSnapshot(session);
 }
 
+async function rememberExternalPromptActions(contactId, actions) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  const session = getSession(contactId);
+  const profile = getProfile(contactId);
+  const sanitizedActions = sanitizeActions(Array.isArray(actions) ? actions : [actions]);
+  if (extractPromptChoices(sanitizedActions).length === 0) {
+    return snapshotSessionData(session.data);
+  }
+  rememberPromptChoices(session, sanitizedActions);
+  touchSession(contactId, session);
+  await persistState(contactId, session, profile);
+  return snapshotSessionData(session.data);
+}
+
 function buildPromptChoiceFingerprint(contactId) {
   const session = sessions.get(contactId);
   const promptChoices = Array.isArray(session?.data?.promptChoices) ? session.data.promptChoices : [];
@@ -5584,6 +5600,7 @@ module.exports = {
     getContactConversationState,
     closeContactConversation,
     markAdvisorManualControl,
-    forceParticularSearchFlow
+    forceParticularSearchFlow,
+    rememberExternalPromptActions
   }
 };

@@ -2,6 +2,31 @@
 
 Last update: 2026-07-13
 
+## WhatsApp Web text-menu operating decision on 2026-07-13
+- The current implementation path is WhatsApp Web with visible letter choices (`A`, `B`, `C`, etc.); official Meta Cloud onboarding remains paused while the portfolio review is pending.
+- Customers receive ordinary text menus and advance by typing the corresponding letter. Official interactive buttons are not required for this path.
+- Runtime responsibility is split explicitly:
+  - Vercel can continue serving the dashboards and persisted views
+  - the WhatsApp Web transport must run on the pharmacy's Windows PC with the controlled Chrome/Edge session available
+  - Vercel cannot host or replace that persistent browser session
+- Web mode does not require the Meta Cloud access token, phone-number ID, WABA ID or webhook synchronization.
+- The automatic inactivity check now runs inside the local Web process every five minutes; the scheduled GitHub call to the Vercel Cloud endpoint was disabled and retained only as a manual diagnostic workflow.
+- Letter-menu hardening completed:
+  - an externally sent inactivity prompt now replaces the previous menu mapping, so `A = Sí` and `B = No` are interpreted correctly
+  - invalid text at the recipe-upload step no longer resets the retry counter forever
+  - after three invalid recipe attempts, the bot hands the conversation to an advisor
+  - runtime checkout tests no longer depend on a stale historical letter sequence
+- Operational status at this checkpoint:
+  - full automated suite: `127 pass / 2 skip / 0 fail`
+  - focused Web suite: `71 pass / 2 skip / 0 fail`
+  - no WhatsApp Web process or remote-debug browser is running on the current Linux workspace
+  - activation and a real `Hola -> A` end-to-end check are still pending on the pharmacy's Windows PC
+- Risk boundary:
+  - `whatsapp-web.js` is not an officially authorized WhatsApp Business integration
+  - it has no Meta support or SLA and carries a material risk of account restriction or termination
+  - opt-in and avoiding outbound bulk messaging reduce spam exposure but do not make the transport official
+  - before linking the pharmacy's main number, the owner must be informed; a non-critical secondary number is the recommended first pilot
+
 ## Meta Business restriction and official onboarding pause on 2026-07-13
 - Confirmed the legitimate Business Portfolio `Farmacia Delko` exists and the current owner account has full control.
 - Attempts to add the technical operator as a person failed before any invitation was created:
@@ -344,7 +369,7 @@ Build a production WhatsApp chatbot for **Farmacia Delko** with:
   - the direct injection path is the current reliable source of truth for visible label names in local web mode
 - Important scope:
   - this overlay does not write native Meta inbox labels
-  - it is the supported way to keep segmentation visible inside WhatsApp Web while preserving the official Cloud API backend
+  - the extension itself is presentation-only, while the local bot transport uses the unofficial `whatsapp-web.js` session
 
 ## Core decisions already taken
 1. Brand name fixed to **Farmacia Delko**.
@@ -440,7 +465,8 @@ while keeping technical audit tags only as an internal detail.
 47. The codebase must support transport switching explicitly:
 - `cloud` for Meta Cloud API
 - `web` for the current `whatsapp-web.js` lab/operational validation path
-48. In `web` mode, visible choices must degrade gracefully to numbered text menus so the customer can answer by typing the option number.
+48. In `web` mode, visible choices must degrade gracefully to lettered text menus so the customer can answer by typing `A`, `B`, `C`, etc.
+49. In `web` mode, the inactivity scheduler must run in the same local Windows process that owns the connected browser; Vercel and GitHub Actions cannot dispatch through that local session.
 
 ## Chatbot behavior constraints
 - Keep chat coherent, no unintended restart to greeting after valid choices.
@@ -448,7 +474,7 @@ while keeping technical audit tags only as an internal detail.
 - Avoid exposing internal flow IDs to client-facing UI.
 - For open bot conversations, send an inactivity prompt after 15 minutes of silence.
 - If there is still no answer 15 minutes later, close the conversation politely and ask the user to write again if needed.
-- Run the inactivity check automatically from GitHub Actions every 5 minutes against the production endpoint.
+- In Web mode, run the inactivity check locally every 5 minutes in the same process that owns the connected browser.
 - Keep prompt and options in the same interactive message whenever choices are shown.
 - Avoid duplicated prompts such as one text line plus another card repeating the same instruction.
 - Use polished rioplatense Spanish across prompts, fallbacks and handoffs.

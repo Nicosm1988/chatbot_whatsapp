@@ -33,7 +33,7 @@ Repositorio principal del chatbot de WhatsApp para Farmacia Delko.
 - `apps/whatsapp-web-companion-extension/`: extension Chromium/Edge para ver filtros y etiquetas operativas dentro de WhatsApp Web.
 - `docs/`: documentacion funcional, tecnica y operativa.
 - `persistence/`: continuidad interna de trabajo y estado del proyecto.
-- `.github/workflows/`: automatizaciones de GitHub Actions para deploy y cron operativo.
+- `.github/workflows/`: automatizaciones de GitHub Actions para deploy y diagnóstico manual del cron Cloud; el cron Web corre en la PC operativa.
 - Archivos raiz de referencia:
   - `API_OnzeCenter_Documentacion_Actualizada.pdf`: referencia preferida para la API de farmacia.
   - `API_OnzeCenter_Documentacion.pdf`: referencia historica anterior.

@@ -3,7 +3,7 @@ const QRCode = require("qrcode");
 
 const { config, isVercelRuntime } = require("./config");
 const conversationRules = require("./conversation_rules");
-const { nextBotReply: nextRuleBotReply } = conversationRules;
+const { nextBotReply: nextRuleBotReply, _private: conversationRulesPrivate } = conversationRules;
 const { nextBotReply: nextAgentBotReply } = require("./conversation_agent");
 const { getPharmacyLookupStatus } = require("./pharmacy_system_lookup");
 const { buildSystemReadiness } = require("./runtime_readiness");
@@ -83,6 +83,7 @@ let webIncomingBridgeBaselineTimestamp = webIncomingStartupWatermarkTimestamp;
 const webIncomingPollStartedAt = Math.floor(Date.now() / 1000) - WEB_INCOMING_LOOKBACK_SECONDS;
 let webIncomingPollHandle = null;
 let webIncomingBridgeHandle = null;
+let localInactivityCheckHandle = null;
 let webIncomingBridgeLogged = false;
 let webIncomingBridgeHealthy = false;
 let webIncomingLastHealthyPollAt = 0;
@@ -91,6 +92,10 @@ let webIncomingSeeded = false;
 let webIncomingBaselineRefreshPromise = null;
 let webCompanionOverlayHandle = null;
 const WEB_COMPANION_OVERLAY_INTERVAL_MS = 2500;
+const LOCAL_INACTIVITY_CHECK_INTERVAL_MS = Math.max(
+  60000,
+  Number(process.env.WHATSAPP_WEB_INACTIVITY_CHECK_INTERVAL_MS || 300000) || 300000
+);
 const MAX_TRACKED_ADVISOR_MESSAGE_IDS = 4000;
 const INBOUND_RESET_CHECKPOINT_TTL_MS = 30 * 60 * 1000;
 const COMPANION_FALLBACK_WARN_COOLDOWN_MS = 60000;
@@ -647,6 +652,39 @@ app.get("/api/companion/conversations", async (req, res) => {
   }
 });
 
+async function runInactivityCheck() {
+  return processInactivityConversations({
+    listConversations,
+    dispatchAction: dispatchActionWithRecipientFallback,
+    recordOutboundMessage,
+    addConversationTag,
+    recordFlowTransition,
+    rememberPromptActions: conversationRulesPrivate.rememberExternalPromptActions,
+    onDispatchError(conversation, error) {
+      console.error(`Failed to process inactivity follow-up for ${conversation.contactId}:`, error);
+    }
+  });
+}
+
+function startLocalInactivityScheduler() {
+  if (!isWebTransport || isVercelRuntime || isTestRuntime || localInactivityCheckHandle) {
+    return false;
+  }
+
+  localInactivityCheckHandle = setInterval(() => {
+    runInactivityCheck().catch(error => {
+      console.error("Fallo el control local de inactividad:", error?.message || error);
+    });
+  }, LOCAL_INACTIVITY_CHECK_INTERVAL_MS);
+
+  if (typeof localInactivityCheckHandle.unref === "function") {
+    localInactivityCheckHandle.unref();
+  }
+
+  console.log(`Control local de inactividad activo cada ${Math.round(LOCAL_INACTIVITY_CHECK_INTERVAL_MS / 60000)} minutos.`);
+  return true;
+}
+
 app.get("/api/cron/inactivity", async (req, res) => {
   const auth = req.headers.authorization;
   if (auth !== `Bearer ${process.env.CRON_SECRET}` && process.env.NODE_ENV === "production" && isVercelRuntime) {
@@ -654,16 +692,7 @@ app.get("/api/cron/inactivity", async (req, res) => {
   }
 
   try {
-    const result = await processInactivityConversations({
-      listConversations,
-      dispatchAction: dispatchActionWithRecipientFallback,
-      recordOutboundMessage,
-      addConversationTag,
-      recordFlowTransition,
-      onDispatchError(conversation, error) {
-        console.error(`Failed to process inactivity follow-up for ${conversation.contactId}:`, error);
-      }
-    });
+    const result = await runInactivityCheck();
     return res.status(200).json({ ok: true, ...result });
   } catch (err) {
     const response = buildInactivityCronErrorResponse(err);
@@ -2753,6 +2782,7 @@ if (isWebTransport && !isTestRuntime) {
   prewarmWebFastPath();
   startWebIncomingBridge();
   startWebIncomingPoller();
+  startLocalInactivityScheduler();
   reconcileWebIncomingRuntime("startup");
   if (shouldSyncInlineLabelNames()) {
     startWebCompanionOverlaySync();
@@ -2784,5 +2814,7 @@ module.exports._private = {
   handleAdvisorHumanOutgoingMessage,
   handleNormalizedWebIncomingMessage,
   selectLatestRecoverableWebMessages,
-  buildInactivityCronErrorResponse
+  buildInactivityCronErrorResponse,
+  runInactivityCheck,
+  startLocalInactivityScheduler
 };

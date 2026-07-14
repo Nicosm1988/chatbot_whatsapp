@@ -14,6 +14,7 @@ test("inactivity cron envia el recordatorio luego de 15 minutos", async () => {
   const outboundCalls = [];
   const tagCalls = [];
   const flowCalls = [];
+  const promptCalls = [];
 
   const result = await processInactivityConversations({
     nowMs,
@@ -34,6 +35,9 @@ test("inactivity cron envia el recordatorio luego de 15 minutos", async () => {
     addConversationTag: async (conversationId, tag) => {
       tagCalls.push({ conversationId, tag });
     },
+    rememberPromptActions: async (contactId, action) => {
+      promptCalls.push({ contactId, action });
+    },
     recordFlowTransition: async payload => {
       flowCalls.push(payload);
     }
@@ -44,6 +48,9 @@ test("inactivity cron envia el recordatorio luego de 15 minutos", async () => {
   assert.equal(dispatchCalls[0].action.type, "interactive");
   assert.equal(dispatchCalls[0].action.buttons[0].id, "inactivity_continue_yes");
   assert.equal(outboundCalls.length, 1);
+  assert.equal(promptCalls.length, 1);
+  assert.equal(promptCalls[0].contactId, "5491111111111");
+  assert.equal(promptCalls[0].action.buttons[1].id, "inactivity_continue_no");
   assert.deepEqual(tagCalls, [{ conversationId: "conv_1", tag: INACTIVITY_PROMPT_TAG }]);
   assert.equal(flowCalls.length, 0);
 });

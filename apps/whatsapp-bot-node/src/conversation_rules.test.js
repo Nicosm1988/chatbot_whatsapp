@@ -258,6 +258,50 @@ test("la modalidad web permite navegar menus escribiendo la letra de la opcion",
   assertNoMojibake(result.actions);
 });
 
+test("la letra del recordatorio de inactividad reemplaza las opciones del menu anterior", async () => {
+  const contactId = makeContactId();
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await _private.rememberExternalPromptActions(contactId, [
+    {
+      type: "interactive",
+      text: "¿Seguís ahí? ¿Querés que continuemos?",
+      buttons: [
+        { id: "inactivity_continue_yes", title: "Sí" },
+        { id: "inactivity_continue_no", title: "No" }
+      ]
+    }
+  ]);
+
+  const result = await nextBotReply({ contactId, inboundText: "A" });
+
+  assert.match(firstText(result.actions), /seguimos donde habíamos quedado/i);
+  assert.deepEqual(allOptions(result.actions).map(option => option.title), ["Delivery", "Mostrador"]);
+  assert.deepEqual(result.meta.after, { state: "order", step: "menu" });
+});
+
+test("la segunda letra del recordatorio de inactividad cierra la conversacion", async () => {
+  const contactId = makeContactId();
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await _private.rememberExternalPromptActions(contactId, [
+    {
+      type: "interactive",
+      text: "¿Seguís ahí? ¿Querés que continuemos?",
+      buttons: [
+        { id: "inactivity_continue_yes", title: "Sí" },
+        { id: "inactivity_continue_no", title: "No" }
+      ]
+    }
+  ]);
+
+  const result = await nextBotReply({ contactId, inboundText: "B" });
+
+  assert.match(firstText(result.actions), /gracias por contactarnos/i);
+  assert.deepEqual(result.meta.after, { state: "idle", step: null });
+  assert.equal(result.meta.closed, true);
+});
+
 test("la deduplicacion no bloquea la misma letra cuando cambia el menu", async () => {
   const contactId = makeContactId();
 
@@ -439,6 +483,32 @@ test("si en mostrador escriben un producto insiste con pedir la receta", async (
   assert.match(promptText(retry.actions), /receta en foto o pdf/i);
   assert.ok(allOptions(retry.actions).some(button => button.id === "nav_back"));
   assertNoMojibake(retry.actions);
+});
+
+test("tres textos invalidos en la carga de receta derivan a un asesor", async () => {
+  const contactId = makeContactId();
+
+  await nextBotReply({ contactId, inboundText: "hola" });
+  await nextBotReply({
+    contactId,
+    inboundText: "Mostrador",
+    inboundMessage: buttonMessage("mode_counter", "Mostrador")
+  });
+
+  const firstRetry = await nextBotReply({ contactId, inboundText: "Quiero un shampoo" });
+  const secondRetry = await nextBotReply({ contactId, inboundText: "No puedo adjuntar" });
+  const thirdRetry = await nextBotReply({ contactId, inboundText: "Sigo sin poder" });
+
+  for (const retry of [firstRetry, secondRetry]) {
+    assert.equal(interactiveCount(retry.actions), 1);
+    assert.equal(retry.actions.filter(action => action.type === "text").length, 0);
+    assert.deepEqual(retry.meta.after, { state: "order", step: "receta_upload" });
+    assert.equal(retry.meta.handedToHuman, false);
+  }
+
+  assert.match(firstText(thirdRetry.actions), /asesor|evitar demoras/i);
+  assert.deepEqual(thirdRetry.meta.after, { state: "agent", step: null });
+  assert.equal(thirdRetry.meta.handedToHuman, true);
 });
 
 test("obra social pide receta y responde con mensaje breve de asesor", async () => {

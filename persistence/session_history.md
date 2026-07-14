@@ -33,6 +33,26 @@
   - do not retry invitations or create replacement assets
   - wait for Meta's response and answer any follow-up truthfully with the owner/business evidence specifically requested
 - The legacy lab WABA/test number remains unsuitable for Farmacia Delko; the production backend still needs the new pharmacy-owned Meta assets and App Secret before official go-live.
+- The immediate implementation path was then changed from official Cloud onboarding to the existing WhatsApp Web transport:
+  - visible choices are ordinary text menus marked `A`, `B`, `C`, etc.
+  - the customer advances by typing the letter
+  - Meta Cloud tokens, WABA assets and webhook sync are not required for this path
+  - Vercel remains useful for dashboards, but the Web transport must run on the pharmacy's Windows PC with its controlled browser session
+- Audited the full Web letter path and confirmed that normal menus already map letters to internal choices correctly.
+- Fixed two edge cases before activation:
+  - inactivity prompts sent outside the conversation engine now replace the previous letter mapping, so `A = Sí` and `B = No` work correctly
+  - text sent repeatedly instead of a recipe attachment no longer resets the fallback counter; the third invalid attempt hands off to an advisor
+- Moved the five-minute inactivity runner into the local Web process and disabled the scheduled GitHub-to-Vercel call; the manual workflow remains for Cloud diagnostics only.
+- Refreshed the stale runtime checkout helper so automated tests no longer depend on an obsolete letter sequence.
+- Updated the operating/install/companion docs to make the runtime split and transport risk explicit.
+- Automated validation completed:
+  - full suite: `127 pass / 2 skip / 0 fail`
+  - focused Web suite: `71 pass / 2 skip / 0 fail`
+- Current activation status:
+  - no local WhatsApp process or remote-debug browser is active in this Linux workspace
+  - Windows restart, QR confirmation if requested and one real `Hola -> A` test remain pending
+  - the main pharmacy number should not be linked until the owner has been informed that `whatsapp-web.js` is unofficial, unsupported by Meta and may cause account restriction or termination
+  - the recommended first pilot is a secondary non-critical number
 
 ## 2026-04-16
 
