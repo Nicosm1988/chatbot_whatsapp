@@ -31,7 +31,7 @@ Por seguridad, un mensaje de un cliente no puede cambiar el modo. El comando só
 
 El selector del tablero queda deshabilitado cuando se abre desde Vercel, otra PC o una dirección pública. No publicar el tablero local mediante un proxy o túnel; para operación remota usar los comandos del chat propio.
 
-Mensaje propuesto para el Bot inicial, pendiente de aprobación antes de vincular el teléfono:
+Mensaje aprobado para el Bot inicial:
 
 > 👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.
 >
@@ -65,6 +65,7 @@ Nota:
 
 - `WHATSAPP_TRANSPORT=web`
 - `WHATSAPP_MOCK_MODE=false`
+- `BOT_MODE=holding`
 - `WHATSAPP_WEB_AUTH_MODE=connected_browser`
 - `WHATSAPP_WEB_BROWSER_URL=http://127.0.0.1:9222`
 - `BUSINESS_DISPLAY_NAME=Farmacia Delko`
@@ -88,6 +89,7 @@ Variables opcionales utiles:
 - `CRON_SECRET` (sólo para diagnósticos manuales del endpoint; no hace falta para el control local)
 
 Nota operativa:
+- `BOT_MODE=holding` es el seguro de arranque: si la base no responde al iniciar, el modo Web queda en Bot inicial y nunca abre el flujo completo por error
 - con `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false`, el primer enlace toma una línea de base y no responde chats no leídos anteriores; esto evita saludar en bloque al cambiar al número de la farmacia
 - una reconexión posterior dentro del mismo proceso sí recupera el último mensaje pendiente reciente de cada chat, limitado por defecto a 300 segundos
 - si la farmacia consulta por una PC nueva y el lookup deja de responder, antes de tocar el bot revisar si falta la VPN de la farmacia
@@ -99,9 +101,12 @@ Nota operativa:
 Desde `apps/whatsapp-bot-node` en la PC Windows de la farmacia:
 
 ```powershell
+npm run lab:stop
 npm ci
 npm run lab:restart
 ```
+
+`lab:stop` es obligatorio antes de actualizar o reinstalar: detiene un watchdog anterior para que no vuelva a levantar Node durante `git pull` o `npm ci`.
 
 Despues:
 
@@ -118,15 +123,16 @@ El modo Web no necesita sincronizar webhooks de Meta. `npm run deploy:prod` actu
 En modo Web no se cambia una variable de teléfono. El número activo es la cuenta de WhatsApp Business que escanea el QR.
 
 1. Confirmar que la versión aprobada del proyecto está instalada en la PC Windows.
-2. Dejar `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false` y `WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS=300` durante el primer enlace.
-3. Activar y persistir `Bot inicial` antes de vincular el número.
-4. Desvincular la sesión `Bot Delko` del teléfono de prueba anterior o cerrar esa sesión en el navegador controlado.
-5. Ejecutar `npm run lab:restart`.
-6. Abrir `http://localhost:3000/whatsapp-qr`.
-7. En el teléfono de la farmacia: WhatsApp Business → Dispositivos vinculados → Vincular un dispositivo.
-8. Escanear el QR.
-9. Desde un segundo teléfono nuevo y autorizado, enviar un mensaje de prueba.
-10. Confirmar que llega una sola bienvenida, que aparece `Aguardando ser atendido` y que la primera respuesta humana lo cambia a `Atendido`.
+2. Detener cualquier instalación anterior con `npm run lab:stop` antes de actualizar archivos o dependencias.
+3. Dejar `BOT_MODE=holding`, `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false` y `WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS=300` durante el primer enlace.
+4. Activar y persistir `Bot inicial` antes de vincular el número; si la interfaz informa que no pudo guardar, no continuar.
+5. Desvincular la sesión `Bot Delko` del teléfono de prueba anterior o cerrar esa sesión en el navegador controlado.
+6. Ejecutar `npm run lab:restart`.
+7. Abrir `http://localhost:3000/whatsapp-qr`.
+8. En el teléfono de la farmacia: WhatsApp Business → Dispositivos vinculados → Vincular un dispositivo.
+9. Escanear el QR.
+10. Desde un segundo teléfono nuevo y autorizado, enviar un mensaje de prueba.
+11. Confirmar que llega una sola bienvenida, que aparece `Aguardando ser atendido` y que la primera respuesta humana lo cambia a `Atendido`.
 
 No instalar todavía el inicio automático hasta que esa prueba sea correcta.
 
@@ -178,6 +184,7 @@ Comportamiento:
 ## 8) Acciones rapidas ante incidentes
 
 - Si `web` no responde:
+  - correr `npm run lab:stop` si hay una actualización en curso o un watchdog anterior
   - correr `npm run lab:restart`
   - revisar `http://localhost:3000/whatsapp-qr`
 - Si el navegador remoto se cerro:

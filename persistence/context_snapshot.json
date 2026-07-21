@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-07-21T20:39:52-03:00",
+    "lastUpdated": "2026-07-21T20:50:38-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -127,6 +127,7 @@
                 "webRecoveryHistoricPendingMessageAllowed": false,
                 "webRecoveryPendingOnFirstSyncDefault": false,
                 "webRecoveryLookbackSecondsDefault": 300,
+                "webIncomingProcessingRequiresInitialBaseline": true,
                 "webLidIdentityNormalization": true,
                 "manualPostSyncFallbackEnabled": true,
                 "partialListenerCompatibilityTolerated": true,
@@ -236,7 +237,7 @@
                 "watchdogRuntimeCurrentlyVerified": false,
                 "scheduledTaskInstalledLocal": false,
                 "scheduledTaskFallbackReason": "access_denied",
-                "fullAutomatedSuitePassing": 148,
+                "fullAutomatedSuitePassing": 151,
                 "fullAutomatedSuiteSkipped": 2,
                 "webFocusedSuitePassing": 71,
                 "webFocusedSuiteSkipped": 2,
@@ -285,6 +286,8 @@
                 "closedAuditConversationCannotBeRemarkedAttended": true,
                 "selfChatModeCommandsEnabled": true,
                 "botModeHttpUpdateScope": "local_loopback_only_no_public_proxy",
+                "webBotModeFailSafeDefault": "holding",
+                "botModeUnpersistedUpdatesRejected": true,
                 "metaWebhookAutoSyncDisabled": true,
                 "labValidateRequiresExplicitContactAndConfirmation": true,
                 "pharmacyNumberSelectionMechanism": "qr_linked_whatsapp_business_account",
@@ -293,6 +296,7 @@
                 "exactReleaseReconciliationPending": false,
                 "exactReleasePublishPending": true,
                 "botInitialActivationPending": true,
+                "windowsRuntimeStopScript": "apps/whatsapp-bot-node/scripts/stop_whatsapp_lab.ps1",
                 "botCompleteLivePlexCheckPending": true
             }
         }

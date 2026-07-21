@@ -28,10 +28,13 @@ Last update: 2026-07-21
   - `Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.`
   - `💚 Gracias por tu paciencia.`
 - Readiness conclusion:
-  - automated code validation is green after the release hardening: `148 pass / 2 skip / 0 fail`
+  - automated code validation is green after the final safety review: `151 pass / 2 skip / 0 fail`
   - the release reconciles the Bot inicial work with the later VPN/new-machine handoff from `origin/main`
   - the first WhatsApp Web sync skips pending unread recovery by default, preventing historical unread chats from receiving a welcome when the pharmacy number is first linked
+  - automatic polling and direct inbound events remain gated until that first baseline is fully established, closing the startup/QR race
   - later reconnects in the same process recover only recent pending messages, with a 300-second default window
+  - Web mode fails closed to `holding` when no explicit mode is available; an unpersisted mode change is rejected and leaves the previous mode active
+  - the Windows handoff includes `npm run lab:stop` so an existing watchdog cannot relaunch Node during an update
   - the real-send validation script now requires both an explicit authorized contact and `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`; it must not be used for the Bot inicial smoke test
   - GitHub release validation runs tests only, and the normal production deploy updates Vercel without synchronizing Meta webhooks
   - Vercel and the documented runtime are pinned to Node `22.x`

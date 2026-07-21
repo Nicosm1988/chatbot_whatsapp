@@ -46,6 +46,14 @@
   - Node is pinned to `22.x` for parity between CI, documentation and Vercel
 - Removed the historical recipient default from `lab:validate`; a real send now requires an explicit authorized contact and `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`. This validation is not used during the Bot inicial pilot.
 - Full regression suite after the production-release hardening: `148 pass / 2 skip / 0 fail`.
+- Closed the final pre-production safety findings:
+  - automatic inbound polling/events do not process until the first WhatsApp Web baseline is complete
+  - Web mode defaults safely to Bot inicial when no stored or explicit mode can be read
+  - a mode switch that cannot be persisted returns an operational error and leaves the previous mode active
+  - added `npm run lab:stop` to quiesce an existing Windows watchdog before updates
+  - the Vercel deploy command explicitly links the intended project from the repository root
+  - aligned the real-send validator with the current `Programa de sobrepeso y diabetes` label
+- Full regression suite after the final safety review: `151 pass / 2 skip / 0 fail`.
 
 ## 2026-07-13
 

@@ -20,6 +20,7 @@ config.whatsappTransport = "cloud";
 config.whatsappMockMode = true;
 const app = require("./index");
 const conversationRules = require("./conversation_rules");
+const { _private: botModeStorePrivate } = require("./bot_mode_store");
 const { _private: webTextClientPrivate } = require("./webTextClient");
 const { _private } = app;
 
@@ -82,6 +83,17 @@ test("la recuperacion del primer sincronizado requiere habilitacion explicita", 
   );
 });
 
+test("el runtime Web espera la linea de base antes de procesar mensajes automaticos", () => {
+  assert.equal(_private.canProcessAutomaticWebIncoming({ initialBaselineEstablished: false }), false);
+  assert.equal(_private.canProcessAutomaticWebIncoming({ initialBaselineEstablished: true }), true);
+});
+
+test("el modo de respaldo falla de forma segura en Web", () => {
+  assert.equal(botModeStorePrivate.resolveFallbackMode("", "web"), "holding");
+  assert.equal(botModeStorePrivate.resolveFallbackMode("", "cloud"), "chatbot");
+  assert.equal(botModeStorePrivate.resolveFallbackMode("chatbot", "web"), "chatbot");
+});
+
 test("el endpoint de modo rechaza una solicitud externa", async () => {
   let statusCode = null;
   let payload = null;
@@ -103,6 +115,41 @@ test("el endpoint de modo rechaza una solicitud externa", async () => {
 
   assert.equal(statusCode, 403);
   assert.deepEqual(payload, { error: "bot_mode_update_not_allowed" });
+});
+
+test("el endpoint de modo rechaza como no guardado un cambio sin persistencia", async () => {
+  let statusCode = null;
+  let payload = null;
+  const response = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      payload = body;
+      return this;
+    }
+  };
+
+  await _private.handleBotModeUpdateRequest(
+    { ip: "127.0.0.1", body: { mode: "holding" } },
+    response,
+    {
+      setMode: async () => ({
+        mode: "chatbot",
+        requestedMode: "holding",
+        persisted: false
+      })
+    }
+  );
+
+  assert.equal(statusCode, 503);
+  assert.deepEqual(payload, {
+    error: "bot_mode_not_persisted",
+    mode: "chatbot",
+    requestedMode: "holding",
+    persisted: false
+  });
 });
 
 test("el Bot inicial recupera la espera y la atencion desde la auditoria durable", () => {

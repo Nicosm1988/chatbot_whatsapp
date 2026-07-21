@@ -19,10 +19,16 @@ function normalizeBotMode(mode) {
   return BOT_MODE_ALIASES.get(String(mode || "").trim().toLowerCase()) || "";
 }
 
-const FALLBACK_MODE = (() => {
-  const envMode = normalizeBotMode(process.env.BOT_MODE);
-  return VALID_MODES.has(envMode) ? envMode : "chatbot";
-})();
+function resolveFallbackMode(envMode, transport = config.whatsappTransport) {
+  const normalized = normalizeBotMode(envMode);
+  if (VALID_MODES.has(normalized)) {
+    return normalized;
+  }
+
+  return String(transport || "").trim().toLowerCase() === "web" ? "holding" : "chatbot";
+}
+
+const FALLBACK_MODE = resolveFallbackMode(process.env.BOT_MODE, config.whatsappTransport);
 
 const INITIAL_WELCOME_MESSAGE = [
   "👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.",
@@ -138,11 +144,9 @@ async function setBotMode(mode) {
     err.code = "invalid_bot_mode";
     throw err;
   }
-  cachedMode = normalized;
-  cachedModeExpiresAt = Date.now() + BOT_MODE_CACHE_MS;
   const activePool = getPool();
   if (!activePool) {
-    return { mode: normalized, persisted: false };
+    return { mode: cachedMode, requestedMode: normalized, persisted: false };
   }
   try {
     await ensureSchema(activePool);
@@ -152,11 +156,13 @@ async function setBotMode(mode) {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
       [normalized]
     );
+    cachedMode = normalized;
+    cachedModeExpiresAt = Date.now() + BOT_MODE_CACHE_MS;
     return { mode: normalized, persisted: true };
   } catch (error) {
     console.error("bot_mode_store.setBotMode failed:", error?.message || error);
     markRemoteBackoff();
-    return { mode: normalized, persisted: false };
+    return { mode: cachedMode, requestedMode: normalized, persisted: false };
   }
 }
 
@@ -167,5 +173,8 @@ module.exports = {
   INITIAL_WELCOME_MESSAGE,
   HOLDING_MESSAGE,
   VALID_MODES: Array.from(VALID_MODES),
-  FALLBACK_MODE
+  FALLBACK_MODE,
+  _private: {
+    resolveFallbackMode
+  }
 };

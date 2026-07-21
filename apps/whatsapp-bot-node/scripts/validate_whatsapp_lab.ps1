@@ -148,7 +148,7 @@ $requiredLabels = @(
   "Delivery",
   "Mostrador",
   "Particular",
-  "Programa obesidad y diabetes",
+  "Programa de sobrepeso y diabetes",
   "Obra social",
   "Aguardando ser atendido",
   "Atendido"

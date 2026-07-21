@@ -82,6 +82,7 @@ Estas son las minimas para el laboratorio y la operacion con navegador conectado
 ```dotenv
 PORT=3000
 BUSINESS_DISPLAY_NAME=Farmacia Delko
+BOT_MODE=holding
 WHATSAPP_TRANSPORT=web
 WHATSAPP_MOCK_MODE=false
 WHATSAPP_WEB_AUTH_MODE=connected_browser
@@ -101,6 +102,8 @@ PHARMACY_SYSTEM_API_BRANCH_IDS=1
 Usa `WHATSAPP_MOCK_MODE=true` únicamente para una prueba sin enviar mensajes reales.
 
 Durante el primer enlace con el número de la farmacia, deja `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false`: el runtime marcará como vistos internamente los mensajes anteriores sin contestarlos. Las reconexiones posteriores de la misma ejecución recuperan sólo mensajes recientes dentro de la ventana de 300 segundos.
+
+`BOT_MODE=holding` es obligatorio para el piloto: si el storage se demora o no está disponible durante un arranque, el transporte Web queda en Bot inicial en vez de abrir el flujo completo.
 
 Este modo usa una automatización no oficial de WhatsApp Web. Requiere una PC Windows encendida y con sesión iniciada, no tiene soporte de Meta y puede implicar restricción o pérdida de la cuenta asociada al número. Antes de vincular el número principal, la dueña debe conocer ese riesgo; para la primera validación conviene usar un número secundario no crítico.
 
@@ -177,6 +180,7 @@ npm run lab:install-startup
 
 Scripts disponibles:
 
+- `npm run lab:stop` (usar antes de `git pull`, `npm ci` o una reinstalación)
 - `npm run lab:restart`
 - `npm run lab:watch`
 - `npm run lab:validate` (sólo con un contacto autorizado y confirmación explícita de envío; no usar para el piloto de Bot inicial)
@@ -211,7 +215,7 @@ Desde `apps/whatsapp-bot-node`:
 npm run deploy:prod
 ```
 
-Este comando despliega solamente Vercel. La antigua sincronización de Meta quedó separada en `npm run deploy:cloud-meta` y no debe ejecutarse durante la operación Web.
+Este comando vincula explícitamente el proyecto `whatsapp-bot-node-chatbot1` desde la raíz del repositorio y despliega solamente Vercel. La antigua sincronización de Meta quedó separada en `npm run deploy:cloud-meta` y no debe ejecutarse durante la operación Web.
 
 Necesitas:
 

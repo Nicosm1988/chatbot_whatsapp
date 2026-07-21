@@ -784,14 +784,22 @@ app.get("/api/bot-mode", async (req, res) => {
   }
 });
 
-async function handleBotModeUpdateRequest(req, res) {
+async function handleBotModeUpdateRequest(req, res, { setMode = setBotMode } = {}) {
   if (!canManageBotMode(req)) {
     return res.status(403).json({ error: "bot_mode_update_not_allowed" });
   }
 
   try {
-    const result = await setBotMode(req.body?.mode);
-    res.status(200).json(result);
+    const result = await setMode(req.body?.mode);
+    if (!result.persisted) {
+      return res.status(503).json({
+        error: "bot_mode_not_persisted",
+        mode: result.mode,
+        requestedMode: result.requestedMode || req.body?.mode,
+        persisted: false
+      });
+    }
+    return res.status(200).json(result);
   } catch (error) {
     if (error?.code === "invalid_bot_mode") {
       return res.status(400).json({ error: "invalid_bot_mode", validModes: VALID_MODES });
@@ -1788,10 +1796,16 @@ async function handleOperatorOutgoingMessage({ messageId, contactId, outboundTex
     }
 
     const result = await setBotMode(command.mode);
-    const persistenceNotice = result.persisted
-      ? ""
-      : " El cambio quedó activo en esta PC, pero debe revisarse antes del próximo reinicio.";
-    await sendTextMessage(contactId, `${buildBotModeConfirmation(command)}${persistenceNotice}`);
+    if (!result.persisted) {
+      const activePublicMode = result.mode === "holding" ? "Bot inicial" : "Bot completo";
+      await sendTextMessage(
+        contactId,
+        `⚠️ No se pudo guardar el cambio. El sistema sigue en ${activePublicMode}. Revisá la conexión y volvé a intentarlo.`
+      );
+      return true;
+    }
+
+    await sendTextMessage(contactId, buildBotModeConfirmation(command));
     return true;
   }
 
@@ -2221,6 +2235,12 @@ function shouldRecoverPendingUnreadOnSync({
   return Boolean(allowFirstSync || (initialBaselineEstablished && reconnectObserved));
 }
 
+function canProcessAutomaticWebIncoming({
+  initialBaselineEstablished = webIncomingInitialBaselineEstablished
+} = {}) {
+  return Boolean(initialBaselineEstablished);
+}
+
 function markWebIncomingReconnectPending() {
   if (webIncomingInitialBaselineEstablished) {
     webIncomingReconnectObserved = true;
@@ -2626,6 +2646,10 @@ async function pollWebIncomingMessages() {
     return;
   }
 
+  if (!canProcessAutomaticWebIncoming()) {
+    return;
+  }
+
   const runtime = getRuntimeStatus();
 
   if (!runtime.authenticated) {
@@ -3009,6 +3033,11 @@ if (isWebTransport && !isTestRuntime) {
         return;
       }
 
+      if (!canProcessAutomaticWebIncoming()) {
+        console.log("Mensaje Web recibido antes de completar la línea de base inicial; se omite de forma segura.");
+        return;
+      }
+
       await handleNormalizedWebIncomingMessage(serialized, "client_message_event");
     } catch (error) {
       console.error("Fallo procesando un mensaje entrante desde whatsapp-web.js:", error);
@@ -3071,6 +3100,7 @@ module.exports._private = {
   handleNormalizedWebIncomingMessage,
   selectLatestRecoverableWebMessages,
   shouldRecoverPendingUnreadOnSync,
+  canProcessAutomaticWebIncoming,
   buildInactivityCronErrorResponse,
   runInactivityCheck,
   startLocalInactivityScheduler
