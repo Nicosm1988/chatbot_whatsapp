@@ -76,6 +76,11 @@ Copy-Item .env.example .env.local
 
 Completa al menos lo necesario para tu modo de trabajo.
 
+Importante:
+- `apps/whatsapp-bot-node/.env.local` no se sube a GitHub.
+- Para una PC nueva, copia ese archivo desde una maquina que ya funcione o vuelve a cargar las credenciales manualmente.
+- Si el sistema de farmacia no responde desde otra PC, conecta primero la VPN que les dejo el proveedor. La evidencia operativa actual apunta a `Radmin VPN`.
+
 - Web local recomendado:
   - `WHATSAPP_TRANSPORT=web`
   - `WHATSAPP_WEB_AUTH_MODE=connected_browser`
@@ -98,6 +103,12 @@ powershell -ExecutionPolicy Bypass -File scripts/start_whatsapp_remote_browser.p
 npm run dev
 ```
 
+Antes de probar busquedas de stock/precio en una PC nueva, conviene validar la conectividad con farmacia:
+
+```powershell
+npm run lab:check-pharmacy
+```
+
 Luego abre:
 
 - `http://localhost:3000/whatsapp-qr`
@@ -117,6 +128,7 @@ Luego abre:
 - `npm run lab:install-startup`
 - `npm run lab:install-shortcut`
 - `npm run lab:validate`
+- `npm run lab:check-pharmacy`
 
 ## Rutas principales
 

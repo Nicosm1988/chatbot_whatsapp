@@ -23,15 +23,21 @@ Last update: 2026-07-21
   - customer messages cannot switch the global mode
 - The HTTP mode selector is write-enabled only from the loopback interface on the bot PC. Vercel, remote addresses and public dashboard views are read-only; the local panel must not be exposed through a public reverse proxy or tunnel.
 - Active `agent_pending` audit records are now reused instead of opening a new conversation for each follow-up. Closed historical records cannot be accidentally re-labeled as attended.
-- The proposed Bot inicial welcome is implemented but must not be activated on the pharmacy phone until the owner/user approves the copy:
+- The user approved the Bot inicial welcome for the pharmacy pilot:
   - `👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.`
   - `Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.`
   - `💚 Gracias por tu paciencia.`
 - Readiness conclusion:
-  - automated code validation is green: `145 pass / 2 skip / 0 fail`
+  - automated code validation is green after the release hardening: `148 pass / 2 skip / 0 fail`
+  - the release reconciles the Bot inicial work with the later VPN/new-machine handoff from `origin/main`
+  - the first WhatsApp Web sync skips pending unread recovery by default, preventing historical unread chats from receiving a welcome when the pharmacy number is first linked
+  - later reconnects in the same process recover only recent pending messages, with a 300-second default window
+  - the real-send validation script now requires both an explicit authorized contact and `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`; it must not be used for the Bot inicial smoke test
+  - GitHub release validation runs tests only, and the normal production deploy updates Vercel without synchronizing Meta webhooks
+  - Vercel and the documented runtime are pinned to Node `22.x`
   - the Linux workspace currently has no running Web runtime or controlled browser
   - the pharmacy number is not selected through a code variable; it becomes active when that WhatsApp Business account links the controlled Windows browser by QR
-  - live go-live remains pending: publish/reconcile the exact release, restart on Windows, link by QR, then validate one real inbound message, label transition and human response
+  - live go-live remains pending: publish the reconciled release, restart on Windows, activate Bot inicial, link by QR, then validate one real inbound message, label transition and human response
   - Bot completo additionally needs a real Plex product/stock check because the current audit observed a live `403` and documentary fallback
 - No Meta Cloud/WABA/button integration is required for this Web mode, but it still uses WhatsApp (a Meta service) through unofficial Web automation. The existing restriction/termination risk and owner acknowledgement requirement remain unchanged.
 
@@ -89,6 +95,33 @@ Last update: 2026-07-21
   - if Meta requests clarification or rejects the review, respond truthfully and use the owner/business evidence Meta specifically requests
 - After reinstatement, continue with a clean pharmacy-owned Meta app, WABA, pharmacy phone number and system-user token; do not reuse the rejected legacy lab WABA or test number.
 - The production backend remains technically prepared for Meta Cloud API, but the final App Secret/signature enforcement and new pharmacy-owned Meta credentials are still pending.
+
+## New-machine install hardening and VPN note on 2026-04-25
+- Hardened the GitHub handoff so another Windows machine can detect pharmacy-network issues before booting the bot:
+  - added connectivity checker:
+    - `apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1`
+  - added npm shortcut:
+    - `npm run lab:check-pharmacy`
+- Refreshed the fresh-install docs so the hidden local prerequisites are explicit:
+  - `README.md`
+  - `docs/INSTALACION_EN_OTRA_MAQUINA.md`
+  - `docs/CLIENT_RUNBOOK.md`
+  - `docs/GUIA_GITHUB_Y_REPOSITORIO.md`
+  - `apps/whatsapp-bot-node/.env.example`
+- Locked the new-machine expectations more honestly:
+  - `apps/whatsapp-bot-node/.env.local` is intentionally not committed to GitHub
+  - the authenticated WhatsApp Web session is intentionally not committed to GitHub
+  - a fresh machine may need a new QR link even if the repo was cloned correctly
+- Added the current operator-network clue to the install/runbook docs:
+  - if `http://delko.plex25center.com.ar:8081` does not respond from another machine, connect the vendor VPN first
+  - the current operator clue points to `Radmin VPN`
+- Live local validation completed:
+  - `npm run lab:check-pharmacy`
+  - result:
+    - DNS OK
+    - TCP OK
+    - authenticated HTTP OK against `/wsplexcenter/sucursales`
+- The three advisor-handoff runtime failures observed at that checkpoint were subsequently fixed; the current 2026-07-21 suite is green at `145 pass / 2 skip / 0 fail`.
 
 ## Power BI pharmacy API guide on 2026-04-16
 - Added a dedicated Power BI handoff and modeling guide:

@@ -9,8 +9,16 @@ $resetUrl = "http://localhost:3000/api/dev/whatsapp/reset-contact-state"
 $simulateInboundUrl = "http://localhost:3000/api/dev/whatsapp/simulate-runtime-inbound"
 $simulateAdvisorClosureUrl = "http://localhost:3000/api/dev/whatsapp/simulate-advisor-closure"
 $labelsStatusUrl = "http://localhost:3000/api/dev/whatsapp/native-labels/status"
-$contactId = if ($env:WHATSAPP_VALIDATE_CONTACT_ID) { $env:WHATSAPP_VALIDATE_CONTACT_ID } else { "199303830229137@lid" }
-$contactName = if ($env:WHATSAPP_VALIDATE_CONTACT_NAME) { $env:WHATSAPP_VALIDATE_CONTACT_NAME } else { "Nico 2" }
+if (-not $env:WHATSAPP_VALIDATE_CONTACT_ID) {
+  throw "Defini WHATSAPP_VALIDATE_CONTACT_ID con un numero de prueba autorizado. No hay un destinatario predeterminado."
+}
+
+if ($env:WHATSAPP_VALIDATE_ALLOW_REAL_SEND -ne "CONFIRMO") {
+  throw "Esta validacion envia mensajes reales. Defini WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO para continuar."
+}
+
+$contactId = $env:WHATSAPP_VALIDATE_CONTACT_ID
+$contactName = if ($env:WHATSAPP_VALIDATE_CONTACT_NAME) { $env:WHATSAPP_VALIDATE_CONTACT_NAME } else { "Prueba autorizada" }
 $iterations = 5
 
 function Invoke-JsonPost {
@@ -142,7 +150,8 @@ $requiredLabels = @(
   "Particular",
   "Programa obesidad y diabetes",
   "Obra social",
-  "Esperando a ser atendido por asesor"
+  "Aguardando ser atendido",
+  "Atendido"
 )
 
 foreach ($requiredLabel in $requiredLabels) {

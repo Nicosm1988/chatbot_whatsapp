@@ -28,13 +28,24 @@
   - `agent_pending` audit records remain the same active conversation across customer follow-ups
   - closed historical conversations cannot be marked `Atendido` by an unrelated later staff message
   - the initial transition is persisted synchronously before sending its welcome when the Web runtime uses the fast path
-- Kept the proposed welcome inactive on the pharmacy phone pending user approval:
+- The user approved the Bot inicial welcome for the pharmacy pilot:
   - `👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.`
   - `Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.`
   - `💚 Gracias por tu paciencia.`
 - Documented the one-time manual native-label color setup because the Web transport cannot reliably set label colors through code.
 - Targeted validation after implementation and hardening: green across mode, commands, durable recovery, runtime, media replies, labels and dashboards.
 - Full regression suite after implementation: `145 pass / 2 skip / 0 fail`.
+- Reconciled that implementation with the later `origin/main` VPN/new-machine handoff without discarding either line of work.
+- Hardened the pharmacy-number cutover:
+  - the first WhatsApp Web sync skips pending unread recovery by default, so old unread chats are not welcomed in bulk
+  - later reconnects in the same process recover only recent pending messages, with a 300-second default lookback
+  - recovery on the first sync is opt-in through `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=true`
+- Made release operations Web-only by default:
+  - GitHub validates the release with tests and no longer calls Meta Graph webhook synchronization
+  - `npm run deploy:prod` deploys only Vercel; the legacy Cloud/Meta path is isolated as `npm run deploy:cloud-meta`
+  - Node is pinned to `22.x` for parity between CI, documentation and Vercel
+- Removed the historical recipient default from `lab:validate`; a real send now requires an explicit authorized contact and `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`. This validation is not used during the Bot inicial pilot.
+- Full regression suite after the production-release hardening: `148 pass / 2 skip / 0 fail`.
 
 ## 2026-07-13
 
@@ -89,6 +100,34 @@
   - Windows restart, QR confirmation if requested and one real `Hola -> A` test remain pending
   - the main pharmacy number should not be linked until the owner has been informed that `whatsapp-web.js` is unofficial, unsupported by Meta and may cause account restriction or termination
   - the recommended first pilot is a secondary non-critical number
+
+## 2026-04-25
+
+- Hardened the reinstall path for another Windows machine so pharmacy connectivity can be checked before starting the bot:
+  - added script:
+    - `apps/whatsapp-bot-node/scripts/check_pharmacy_connectivity.ps1`
+  - added npm shortcut:
+    - `npm run lab:check-pharmacy`
+- Refreshed the repo docs that a fresh clone will actually use:
+  - `README.md`
+  - `docs/INSTALACION_EN_OTRA_MAQUINA.md`
+  - `docs/CLIENT_RUNBOOK.md`
+  - `docs/GUIA_GITHUB_Y_REPOSITORIO.md`
+  - `apps/whatsapp-bot-node/.env.example`
+- Documented the operational reality of a fresh machine more clearly:
+  - `.env.local` is intentionally excluded from GitHub
+  - WhatsApp Web authenticated session data is intentionally machine-local
+  - a new machine may need a fresh QR link
+- Added the current likely network prerequisite:
+  - if `http://delko.plex25center.com.ar:8081` is unreachable from another PC, connect the vendor VPN first
+  - the current operator clue points to `Radmin VPN`
+- Live validation completed:
+  - `npm run lab:check-pharmacy` returned:
+    - DNS OK
+    - TCP OK
+    - authenticated HTTP OK
+- At that checkpoint, three existing post-summary advisor-handoff tests were still failing; they were subsequently fixed and the 2026-07-21 full suite is green at `145 pass / 2 skip / 0 fail`.
+- The install/VPN work itself did not modify runtime logic.
 
 ## 2026-04-16
 

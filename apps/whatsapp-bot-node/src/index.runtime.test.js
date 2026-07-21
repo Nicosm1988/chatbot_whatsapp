@@ -41,6 +41,47 @@ test("el cambio de modo por HTTP solo admite conexiones locales", () => {
   assert.equal(_private.canManageBotMode({ ip: "203.0.113.10" }), false);
 });
 
+test("la primera sincronizacion Web no recupera mensajes pendientes por defecto", () => {
+  assert.equal(
+    _private.shouldRecoverPendingUnreadOnSync({
+      initialBaselineEstablished: false,
+      reconnectObserved: false,
+      allowFirstSync: false
+    }),
+    false
+  );
+});
+
+test("una reconexion Web posterior recupera solo la ventana reciente", () => {
+  assert.equal(
+    _private.shouldRecoverPendingUnreadOnSync({
+      initialBaselineEstablished: true,
+      reconnectObserved: true,
+      allowFirstSync: false
+    }),
+    true
+  );
+  assert.equal(
+    _private.shouldRecoverPendingUnreadOnSync({
+      initialBaselineEstablished: true,
+      reconnectObserved: false,
+      allowFirstSync: false
+    }),
+    false
+  );
+});
+
+test("la recuperacion del primer sincronizado requiere habilitacion explicita", () => {
+  assert.equal(
+    _private.shouldRecoverPendingUnreadOnSync({
+      initialBaselineEstablished: false,
+      reconnectObserved: false,
+      allowFirstSync: true
+    }),
+    true
+  );
+});
+
 test("el endpoint de modo rechaza una solicitud externa", async () => {
   let statusCode = null;
   let payload = null;

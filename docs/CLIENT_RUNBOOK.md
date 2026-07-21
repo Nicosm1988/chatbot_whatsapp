@@ -74,6 +74,8 @@ Nota:
 - `PHARMACY_SYSTEM_API_BASE_URL`
 - `PHARMACY_SYSTEM_API_USERNAME`
 - `PHARMACY_SYSTEM_API_PASSWORD`
+- `WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS=300`
+- `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false`
 - `WHATSAPP_WEB_INACTIVITY_CHECK_INTERVAL_MS=300000`
 
 Variables opcionales utiles:
@@ -84,6 +86,13 @@ Variables opcionales utiles:
 - `KV_REST_API_URL`
 - `KV_REST_API_TOKEN`
 - `CRON_SECRET` (sólo para diagnósticos manuales del endpoint; no hace falta para el control local)
+
+Nota operativa:
+- con `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false`, el primer enlace toma una línea de base y no responde chats no leídos anteriores; esto evita saludar en bloque al cambiar al número de la farmacia
+- una reconexión posterior dentro del mismo proceso sí recupera el último mensaje pendiente reciente de cada chat, limitado por defecto a 300 segundos
+- si la farmacia consulta por una PC nueva y el lookup deja de responder, antes de tocar el bot revisar si falta la VPN de la farmacia
+- la evidencia actual apunta a que podria estar usando `Radmin VPN`
+- chequeo rapido: `npm run lab:check-pharmacy`
 
 ## 4) Inicio recomendado en modo web
 
@@ -100,22 +109,24 @@ Despues:
 2. Si aparece un QR, vincularlo desde el teléfono que tiene el WhatsApp de prueba o de la farmacia, según el piloto aprobado.
 3. Confirmar que la sesión quede autenticada.
 4. Verificar `http://localhost:3000/api/system/ready` y `http://localhost:3000/api/system/liveness`.
-5. Desde un segundo teléfono, escribir `Hola`, responder `A` y confirmar que avanza al siguiente menú.
+5. Con `Bot inicial`, desde un segundo teléfono nuevo y autorizado, escribir `Hola`, confirmar una sola bienvenida y luego confirmar silencio ante un segundo mensaje.
 
-No ejecutar `npm run deploy:prod` ni sincronizar webhooks de Meta para activar este modo. Esos pasos corresponden al canal Cloud oficial.
+El modo Web no necesita sincronizar webhooks de Meta. `npm run deploy:prod` actualiza únicamente el tablero de Vercel; no ejecutar `npm run deploy:cloud-meta` mientras se mantenga esta decisión operativa.
 
 ### Cambiar del número de prueba al número de la farmacia
 
 En modo Web no se cambia una variable de teléfono. El número activo es la cuenta de WhatsApp Business que escanea el QR.
 
 1. Confirmar que la versión aprobada del proyecto está instalada en la PC Windows.
-2. Desvincular la sesión `Bot Delko` del teléfono de prueba anterior o cerrar esa sesión en el navegador controlado.
-3. Ejecutar `npm run lab:restart`.
-4. Abrir `http://localhost:3000/whatsapp-qr`.
-5. En el teléfono de la farmacia: WhatsApp Business → Dispositivos vinculados → Vincular un dispositivo.
-6. Escanear el QR.
-7. Desde un segundo teléfono autorizado, enviar un mensaje de prueba.
-8. Confirmar que llega una sola bienvenida, que aparece `Aguardando ser atendido` y que la primera respuesta humana lo cambia a `Atendido`.
+2. Dejar `WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC=false` y `WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS=300` durante el primer enlace.
+3. Activar y persistir `Bot inicial` antes de vincular el número.
+4. Desvincular la sesión `Bot Delko` del teléfono de prueba anterior o cerrar esa sesión en el navegador controlado.
+5. Ejecutar `npm run lab:restart`.
+6. Abrir `http://localhost:3000/whatsapp-qr`.
+7. En el teléfono de la farmacia: WhatsApp Business → Dispositivos vinculados → Vincular un dispositivo.
+8. Escanear el QR.
+9. Desde un segundo teléfono nuevo y autorizado, enviar un mensaje de prueba.
+10. Confirmar que llega una sola bienvenida, que aparece `Aguardando ser atendido` y que la primera respuesta humana lo cambia a `Atendido`.
 
 No instalar todavía el inicio automático hasta que esa prueba sea correcta.
 
@@ -174,7 +185,13 @@ Comportamiento:
 - Si el watchdog debe quedar activo:
   - correr `npm run lab:watch`
 - Si necesitas una validacion guiada:
-  - correr `npm run lab:validate`
+  - usar un contacto nuevo y autorizado
+  - definir `WHATSAPP_VALIDATE_CONTACT_ID`
+  - confirmar explícitamente el envío real con `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`
+  - no correr `npm run lab:validate` durante el piloto de Bot inicial: esa rutina recorre el Bot completo
+- Si falla la conexion con farmacia:
+  - conectar la VPN de la farmacia si aplica
+  - correr `npm run lab:check-pharmacy`
 - Si el storage no persiste:
   - revisar `DATABASE_URL`
   - revisar `/api/system/storage`

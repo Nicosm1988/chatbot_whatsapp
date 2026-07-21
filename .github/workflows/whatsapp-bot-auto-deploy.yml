@@ -1,4 +1,4 @@
-name: WhatsApp Bot Auto Deploy
+name: WhatsApp Bot Release Validation
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-deploy-sync:
+  test-release:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,15 +32,3 @@ jobs:
 
       - name: Run tests
         run: npm test
-
-      - name: Deploy and sync Meta webhook
-        run: npm run deploy:prod
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
-          META_API_VERSION: ${{ secrets.META_API_VERSION }}
-          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
-          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
-          WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.WHATSAPP_BUSINESS_ACCOUNT_ID }}
-          WEBHOOK_BASE_URL: https://whatsapp-bot-node-chatbot1.vercel.app

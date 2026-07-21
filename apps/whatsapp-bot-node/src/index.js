@@ -83,10 +83,19 @@ const FAST_WEB_RESPONSE_MODE = isWebTransport && !isVercelRuntime;
 const WEB_INCOMING_POLL_INTERVAL_MS = config.whatsappWebIncomingPollIntervalMs;
 const WEB_HEALTHY_POLL_INTERVAL_MS = config.whatsappWebHealthyPollIntervalMs;
 const WEB_INCOMING_LOOKBACK_SECONDS = config.whatsappWebIncomingLookbackSeconds;
+const configuredWebRecoveryLookbackSeconds = Number(
+  process.env.WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS || 300
+);
 const WEB_RECOVERY_LOOKBACK_SECONDS = Math.max(
   WEB_INCOMING_LOOKBACK_SECONDS,
-  Number(process.env.WHATSAPP_WEB_RECOVERY_LOOKBACK_SECONDS || 72 * 60 * 60)
+  Number.isFinite(configuredWebRecoveryLookbackSeconds) && configuredWebRecoveryLookbackSeconds > 0
+    ? configuredWebRecoveryLookbackSeconds
+    : 300
 );
+const WEB_RECOVER_PENDING_ON_FIRST_SYNC =
+  String(process.env.WHATSAPP_WEB_RECOVER_PENDING_ON_FIRST_SYNC || "false")
+    .trim()
+    .toLowerCase() === "true";
 const WEB_BRIDGE_RECONCILE_INTERVAL_MS = config.whatsappWebBridgeReconcileIntervalMs;
 const WEB_ADVISOR_CLOSURE_POLL_INTERVAL_MS = Math.max(1500, Math.min(WEB_INCOMING_POLL_INTERVAL_MS, 5000));
 const webIncomingStartupWatermarkTimestamp = Math.floor(Date.now() / 1000);
@@ -101,6 +110,8 @@ let webIncomingLastHealthyPollAt = 0;
 let webAdvisorClosureLastPollAt = 0;
 let webIncomingSeeded = false;
 let webIncomingBaselineRefreshPromise = null;
+let webIncomingInitialBaselineEstablished = false;
+let webIncomingReconnectObserved = false;
 let webCompanionOverlayHandle = null;
 const WEB_COMPANION_OVERLAY_INTERVAL_MS = 2500;
 const LOCAL_INACTIVITY_CHECK_INTERVAL_MS = Math.max(
@@ -2202,6 +2213,20 @@ function normalizeWebContactId(rawFrom) {
   return normalizeTransportContactId(rawFrom);
 }
 
+function shouldRecoverPendingUnreadOnSync({
+  initialBaselineEstablished = webIncomingInitialBaselineEstablished,
+  reconnectObserved = webIncomingReconnectObserved,
+  allowFirstSync = WEB_RECOVER_PENDING_ON_FIRST_SYNC
+} = {}) {
+  return Boolean(allowFirstSync || (initialBaselineEstablished && reconnectObserved));
+}
+
+function markWebIncomingReconnectPending() {
+  if (webIncomingInitialBaselineEstablished) {
+    webIncomingReconnectObserved = true;
+  }
+}
+
 async function seedExistingWebInboundMessageIds(options = {}) {
   const force = Boolean(options?.force);
   if (webIncomingSeeded && !force) {
@@ -2260,7 +2285,8 @@ async function refreshWebIncomingBaseline(reason = "runtime_event", options = {}
       return false;
     }
 
-    const recoveryResult = options?.recoverPendingUnread
+    const recoverPendingUnread = Boolean(options?.recoverPendingUnread);
+    const recoveryResult = recoverPendingUnread
       ? await recoverLatestPendingWebMessages(reason)
       : { processedCount: 0, chatsSeen: 0 };
     const baselineTimestampSeconds = Math.floor(Date.now() / 1000);
@@ -2271,6 +2297,10 @@ async function refreshWebIncomingBaseline(reason = "runtime_event", options = {}
       force: true,
       baselineTimestampSeconds
     });
+    webIncomingInitialBaselineEstablished = true;
+    if (recoverPendingUnread) {
+      webIncomingReconnectObserved = false;
+    }
     if (recoveryResult.processedCount > 0) {
       console.log(
         `Se recuperaron ${recoveryResult.processedCount} mensajes pendientes al volver online (${reason}).`
@@ -2809,7 +2839,7 @@ async function ensureWebIncomingBridge(options = {}) {
 
   if (!webIncomingSeeded) {
     const prepared = await refreshWebIncomingBaseline(options?.reason || "bridge_prepare", {
-      recoverPendingUnread: true
+      recoverPendingUnread: shouldRecoverPendingUnreadOnSync()
     });
 
     if (!prepared) {
@@ -2912,7 +2942,9 @@ async function ensureWebIncomingBridge(options = {}) {
 
 function reconcileWebIncomingRuntime(reason) {
   runDetachedTask(async () => {
-    await refreshWebIncomingBaseline(reason, { recoverPendingUnread: true });
+    await refreshWebIncomingBaseline(reason, {
+      recoverPendingUnread: shouldRecoverPendingUnreadOnSync()
+    });
     await ensureWebIncomingBridge({ reason });
   }, `Fallo reconciliando el runtime de mensajes de WhatsApp Web (${reason}):`);
 }
@@ -2954,7 +2986,14 @@ if (isWebTransport && !isTestRuntime) {
     if (state === "CONNECTED") {
       startNativeLabelBootstrap();
       reconcileWebIncomingRuntime("connected");
+    } else {
+      markWebIncomingReconnectPending();
     }
+  });
+
+  waClient.on("disconnected", reason => {
+    console.log(`WhatsApp Web desconectado: ${reason || "sin detalle"}`);
+    markWebIncomingReconnectPending();
   });
 
   waClient.on("authenticated", () => {
@@ -3031,6 +3070,7 @@ module.exports._private = {
   handleBotModeUpdateRequest,
   handleNormalizedWebIncomingMessage,
   selectLatestRecoverableWebMessages,
+  shouldRecoverPendingUnreadOnSync,
   buildInactivityCronErrorResponse,
   runInactivityCheck,
   startLocalInactivityScheduler

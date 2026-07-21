@@ -3,20 +3,26 @@
   "version": "1.0.0",
   "private": true,
   "description": "Farmacia Delko WhatsApp bot with web text-menu and Cloud API transports",
+  "engines": {
+    "node": "22.x"
+  },
   "main": "src/index.js",
   "scripts": {
     "dev": "node src/index.js",
     "start": "NODE_ENV=production node src/index.js",
     "test": "node --test src/*.test.js",
     "test:web": "node --test src/webTextClient.test.js src/conversation_rules.test.js src/index.runtime.test.js src/whatsapp_runtime_utils.test.js",
-    "deploy:prod": "node scripts/deploy_and_sync_webhook.js",
+    "deploy:prod": "npm run deploy:vercel",
+    "deploy:vercel": "npx vercel --cwd ../.. --prod --yes",
+    "deploy:cloud-meta": "node scripts/deploy_and_sync_webhook.js",
     "refresh:plex-drugs": "node scripts/generate_plex_drug_snapshot.js",
     "lab:restart": "powershell -ExecutionPolicy Bypass -File scripts/restart_whatsapp_lab.ps1",
     "lab:watch": "powershell -ExecutionPolicy Bypass -File scripts/run_whatsapp_bot_forever.ps1",
     "lab:install-startup": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_startup.ps1",
     "lab:start-silent": "powershell -ExecutionPolicy Bypass -File scripts/start_whatsapp_bot_silent.ps1",
     "lab:install-shortcut": "powershell -ExecutionPolicy Bypass -File scripts/install_whatsapp_bot_desktop_shortcut.ps1",
-    "lab:validate": "powershell -ExecutionPolicy Bypass -File scripts/validate_whatsapp_lab.ps1"
+    "lab:validate": "powershell -ExecutionPolicy Bypass -File scripts/validate_whatsapp_lab.ps1",
+    "lab:check-pharmacy": "powershell -ExecutionPolicy Bypass -File scripts/check_pharmacy_connectivity.ps1"
   },
   "dependencies": {
     "axios": "^1.8.4",
