@@ -54,6 +54,11 @@
   - the Vercel deploy command explicitly links the intended project from the repository root
   - aligned the real-send validator with the current `Programa de sobrepeso y diabetes` label
 - Full regression suite after the final safety review: `151 pass / 2 skip / 0 fail`.
+- Applied non-breaking lockfile security updates for Axios, Express and compatible transitive packages:
+  - npm audit decreased from 13 advisories to 5
+  - the 5 remaining high advisories belong to the Puppeteer stack inherited from the pinned `whatsapp-web.js` runtime
+  - no forced WhatsApp runtime upgrade was made before a Windows/browser compatibility validation
+  - clean install and the full suite remained green at `151 pass / 2 skip / 0 fail`
 
 ## 2026-07-13
 

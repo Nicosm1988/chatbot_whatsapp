@@ -38,6 +38,7 @@ Last update: 2026-07-21
   - the real-send validation script now requires both an explicit authorized contact and `WHATSAPP_VALIDATE_ALLOW_REAL_SEND=CONFIRMO`; it must not be used for the Bot inicial smoke test
   - GitHub release validation runs tests only, and the normal production deploy updates Vercel without synchronizing Meta webhooks
   - Vercel and the documented runtime are pinned to Node `22.x`
+  - compatible production dependency patches reduced the npm audit from 13 advisories to 5 without changing the pinned WhatsApp Web runtime; the remaining advisories are inherited through its legacy Puppeteer stack and require a separately validated runtime upgrade
   - the Linux workspace currently has no running Web runtime or controlled browser
   - the pharmacy number is not selected through a code variable; it becomes active when that WhatsApp Business account links the controlled Windows browser by QR
   - live go-live remains pending: publish the reconciled release, restart on Windows, activate Bot inicial, link by QR, then validate one real inbound message, label transition and human response

@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-07-21T20:50:38-03:00",
+    "lastUpdated": "2026-07-21T20:55:20-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -239,6 +239,9 @@
                 "scheduledTaskFallbackReason": "access_denied",
                 "fullAutomatedSuitePassing": 151,
                 "fullAutomatedSuiteSkipped": 2,
+                "productionDependencyAdvisoriesBeforeCompatibleFixes": 13,
+                "productionDependencyAdvisoriesAfterCompatibleFixes": 5,
+                "remainingDependencyAdvisoriesRequireWhatsappRuntimeUpgrade": true,
                 "webFocusedSuitePassing": 71,
                 "webFocusedSuiteSkipped": 2,
                 "runtimeConcurrencySuitePassing": true,
