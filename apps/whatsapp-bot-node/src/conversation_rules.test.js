@@ -136,6 +136,62 @@ test.beforeEach(() => {
   _private.resetSessions();
 });
 
+test("el Bot inicial abre una espera y solo pide enviar la bienvenida una vez", async () => {
+  const contactId = makeContactId();
+
+  const first = await _private.enterInitialBotMode(contactId, { contactName: "Cliente" });
+  const second = await _private.enterInitialBotMode(contactId, { contactName: "Cliente" });
+
+  assert.equal(first?.shouldSendWelcome, true);
+  assert.equal(first?.state?.state, "agent");
+  assert.equal(first?.sessionData?.automationMode, "initial");
+  assert.equal(first?.sessionData?.initialWelcomeSent, true);
+  assert.equal(first?.sessionData?.waitingAdvisor, true);
+  assert.equal(first?.sessionData?.manualAdvisorIntervened, false);
+  assert.equal(second?.shouldSendWelcome, false);
+});
+
+test("el Bot inicial recupera la bienvenida ya enviada despues de reiniciar la memoria", async () => {
+  const contactId = makeContactId();
+
+  const restored = await _private.enterInitialBotMode(contactId, {
+    contactName: "Cliente",
+    welcomeAlreadySent: true
+  });
+
+  assert.equal(restored?.shouldSendWelcome, false);
+  assert.equal(restored?.sessionData?.initialWelcomeSent, true);
+  assert.equal(restored?.sessionData?.waitingAdvisor, true);
+  assert.equal(restored?.sessionData?.manualAdvisorIntervened, false);
+});
+
+test("el Bot inicial recupera el control humano y no vuelve a saludar despues de reiniciar", async () => {
+  const contactId = makeContactId();
+
+  const restored = await _private.enterInitialBotMode(contactId, {
+    contactName: "Cliente",
+    welcomeAlreadySent: true,
+    attendedByHuman: true
+  });
+
+  assert.equal(restored?.shouldSendWelcome, false);
+  assert.equal(restored?.sessionData?.waitingAdvisor, false);
+  assert.equal(restored?.sessionData?.manualAdvisorIntervened, true);
+});
+
+test("la primera respuesta humana pasa la espera del Bot inicial a Atendido y silencia el bot", async () => {
+  const contactId = makeContactId();
+  await _private.enterInitialBotMode(contactId, { contactName: "Cliente" });
+
+  const attended = await _private.markAdvisorManualControl(contactId);
+  const later = await _private.enterInitialBotMode(contactId, { contactName: "Cliente" });
+
+  assert.equal(attended?.waitingAdvisor, false);
+  assert.equal(attended?.manualAdvisorIntervened, true);
+  assert.equal(later?.shouldSendWelcome, false);
+  assert.equal(later?.sessionData?.manualAdvisorIntervened, true);
+});
+
 test("el lookup usa copy honesto cuando el stock no pudo confirmarse", () => {
   const text = _private.buildLookupDetailsText({
     title: "DUTIDE 1 mg jer. prell. x 4",

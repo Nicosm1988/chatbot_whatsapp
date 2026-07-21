@@ -83,6 +83,25 @@ test("expone la etiqueta de espera de asesor para el cliente", () => {
   assert.deepEqual(visible, [
     { id: "delivery", label: "Delivery" },
     { id: "particular", label: "Particular" },
-    { id: "esperando_asesor", label: "Esperando a ser atendido por asesor" }
+    { id: "esperando_asesor", label: "Aguardando ser atendido" }
+  ]);
+});
+
+test("cambia la etiqueta de espera por Atendido cuando responde una persona", () => {
+  const waiting = mergeConversationContextTags([], {
+    waitingAdvisor: true,
+    manualAdvisorIntervened: false
+  });
+  const attended = mergeConversationContextTags(waiting, {
+    waitingAdvisor: false,
+    manualAdvisorIntervened: true
+  });
+
+  assert.ok(waiting.includes("esperando_asesor"));
+  assert.ok(!waiting.includes("atendido"));
+  assert.ok(attended.includes("atendido"));
+  assert.ok(!attended.includes("esperando_asesor"));
+  assert.deepEqual(getClientFacingConversationTags(attended), [
+    { id: "atendido", label: "Atendido" }
   ]);
 });

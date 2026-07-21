@@ -1,5 +1,41 @@
 # Session History Log
 
+## 2026-07-21
+
+- Re-audited the WhatsApp Web project before moving the pharmacy number:
+  - baseline automated suite was green (`127 pass / 2 skip / 0 fail`)
+  - no live Node runtime or remote-debug browser was running in the Linux workspace
+  - changing the active Web number was confirmed to be a QR-link operation, not a phone-number environment-variable change
+  - Windows restart, QR linking and a real second-phone smoke test remain mandatory before go-live
+  - current local and published Git state still needs reconciliation before updating the pharmacy PC
+  - the live Plex endpoint returned `403` during tests and used the documentary fallback, so Bot completo needs a real product/stock validation before release
+- Implemented two client-facing operating modes without breaking stored legacy values:
+  - `Bot inicial` maps to `holding`
+  - `Bot completo` maps to `chatbot`
+- Implemented Bot inicial conversation behavior:
+  - one proposed welcome per active conversation, recovered from persistent audit state after a process restart
+  - subsequent customer messages stay silent while waiting
+  - native/board label starts as `Aguardando ser atendido`
+  - first human pharmacy reply, including audio or media without text, changes it to `Atendido`
+  - unrelated WhatsApp Business labels remain preserved
+- Added safe self-chat commands:
+  - `Activá el bot inicial`
+  - `Activá el bot completo`
+  - exact commands are ignored as control instructions when sent by customers or in other chats
+- Updated the non-technical conversation dashboard with the two public mode names, red waiting state, green attended state and matching filters.
+- Restricted HTTP mode changes to the local loopback interface on the bot PC; Vercel and remote dashboard views remain read-only. The local panel must not be exposed through a public proxy or tunnel.
+- Hardened lifecycle recovery:
+  - `agent_pending` audit records remain the same active conversation across customer follow-ups
+  - closed historical conversations cannot be marked `Atendido` by an unrelated later staff message
+  - the initial transition is persisted synchronously before sending its welcome when the Web runtime uses the fast path
+- Kept the proposed welcome inactive on the pharmacy phone pending user approval:
+  - `👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.`
+  - `Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.`
+  - `💚 Gracias por tu paciencia.`
+- Documented the one-time manual native-label color setup because the Web transport cannot reliably set label colors through code.
+- Targeted validation after implementation and hardening: green across mode, commands, durable recovery, runtime, media replies, labels and dashboards.
+- Full regression suite after implementation: `145 pass / 2 skip / 0 fail`.
+
 ## 2026-07-13
 
 - Recovered and audited the current official Meta Cloud API onboarding state for Farmacia Delko.

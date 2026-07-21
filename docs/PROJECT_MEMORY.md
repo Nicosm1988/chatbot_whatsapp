@@ -1,6 +1,39 @@
 # Project Memory - WhatsApp Bot Farmacia Delko
 
-Last update: 2026-07-13
+Last update: 2026-07-21
+
+## Bot inicial / Bot completo and pharmacy-number readiness on 2026-07-21
+- The project now exposes two business-facing operating modes while preserving the existing internal mode values for storage compatibility:
+  - `Bot inicial` (`holding` internally)
+  - `Bot completo` (`chatbot` internally)
+- Bot inicial behavior:
+  - sends one warm formal welcome per active conversation and recovers that state from the persistent audit after a process restart
+  - stores the conversation in advisor-controlled state
+  - applies the managed label `Aguardando ser atendido`
+  - sends no repeated automatic replies while the customer waits
+  - the first real pharmacy-side response, including media-only replies, changes the managed label to `Atendido` and keeps the bot silent
+  - a later human closure still applies `Finalizado`; a new customer message after closure may start a fresh conversation
+- The dashboard now names the modes in client language and renders:
+  - `Aguardando ser atendido` in red
+  - `Atendido` in green
+- WhatsApp-native label names are created/synchronized automatically while unrelated labels are preserved. The exact native WhatsApp label colors require one manual setup in WhatsApp Business because the Web library has no stable public color-management API.
+- Safe operator commands are supported only from the pharmacy number's self-chat:
+  - `Activá el bot inicial`
+  - `Activá el bot completo`
+  - customer messages cannot switch the global mode
+- The HTTP mode selector is write-enabled only from the loopback interface on the bot PC. Vercel, remote addresses and public dashboard views are read-only; the local panel must not be exposed through a public reverse proxy or tunnel.
+- Active `agent_pending` audit records are now reused instead of opening a new conversation for each follow-up. Closed historical records cannot be accidentally re-labeled as attended.
+- The proposed Bot inicial welcome is implemented but must not be activated on the pharmacy phone until the owner/user approves the copy:
+  - `👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.`
+  - `Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.`
+  - `💚 Gracias por tu paciencia.`
+- Readiness conclusion:
+  - automated code validation is green: `145 pass / 2 skip / 0 fail`
+  - the Linux workspace currently has no running Web runtime or controlled browser
+  - the pharmacy number is not selected through a code variable; it becomes active when that WhatsApp Business account links the controlled Windows browser by QR
+  - live go-live remains pending: publish/reconcile the exact release, restart on Windows, link by QR, then validate one real inbound message, label transition and human response
+  - Bot completo additionally needs a real Plex product/stock check because the current audit observed a live `403` and documentary fallback
+- No Meta Cloud/WABA/button integration is required for this Web mode, but it still uses WhatsApp (a Meta service) through unofficial Web automation. The existing restriction/termination risk and owner acknowledgement requirement remain unchanged.
 
 ## WhatsApp Web text-menu operating decision on 2026-07-13
 - The current implementation path is WhatsApp Web with visible letter choices (`A`, `B`, `C`, etc.); official Meta Cloud onboarding remains paused while the portfolio review is pending.

@@ -30,7 +30,7 @@ test("arma tags visibles del companion cuando tags llega como objetos", () => {
 
   assert.deepEqual(
     conversation.tags.map(tag => tag.label),
-    ["Mostrador", "Esperando a ser atendido por asesor"]
+    ["Mostrador", "Aguardando ser atendido"]
   );
   assert.deepEqual(conversation.tagIds, ["mostrador", "esperando_asesor"]);
 });

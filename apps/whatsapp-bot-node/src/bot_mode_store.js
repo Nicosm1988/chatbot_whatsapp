@@ -5,13 +5,33 @@ const CONNECTION_STRING =
   process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || "";
 
 const VALID_MODES = new Set(["chatbot", "holding"]);
+const BOT_MODE_ALIASES = new Map([
+  ["chatbot", "chatbot"],
+  ["complete", "chatbot"],
+  ["completo", "chatbot"],
+  ["full", "chatbot"],
+  ["holding", "holding"],
+  ["initial", "holding"],
+  ["inicial", "holding"]
+]);
+
+function normalizeBotMode(mode) {
+  return BOT_MODE_ALIASES.get(String(mode || "").trim().toLowerCase()) || "";
+}
+
 const FALLBACK_MODE = (() => {
-  const envMode = String(process.env.BOT_MODE || "").trim().toLowerCase();
+  const envMode = normalizeBotMode(process.env.BOT_MODE);
   return VALID_MODES.has(envMode) ? envMode : "chatbot";
 })();
 
-const HOLDING_MESSAGE =
-  "¡Hola! Gracias por escribirnos a Farmacia Delko. Recibimos tu mensaje y en los próximos minutos uno de nuestros asesores se va a comunicar con vos para darte la mejor atención. Agradecemos tu paciencia, ¡ya estamos con vos!";
+const INITIAL_WELCOME_MESSAGE = [
+  "👋 ¡Hola! Muchas gracias por comunicarte con Farmacia Delko.",
+  "",
+  "Recibimos tu mensaje. En breve, una persona de nuestro equipo te atenderá por este medio.",
+  "",
+  "💚 Gracias por tu paciencia."
+].join("\n");
+const HOLDING_MESSAGE = INITIAL_WELCOME_MESSAGE;
 
 const FAST_LOCAL_BOT_MODE_CACHE =
   config.whatsappTransport === "web" && !isVercelRuntime && process.env.NODE_ENV !== "test";
@@ -95,7 +115,7 @@ async function getBotMode() {
     const { rows } = await activePool.query(
       "SELECT value FROM bot_settings WHERE key = 'bot_mode' LIMIT 1"
     );
-    const stored = rows[0]?.value;
+    const stored = normalizeBotMode(rows[0]?.value);
     if (stored && VALID_MODES.has(stored)) {
       cachedMode = stored;
       cachedModeExpiresAt = Date.now() + BOT_MODE_CACHE_MS;
@@ -112,7 +132,7 @@ async function getBotMode() {
 }
 
 async function setBotMode(mode) {
-  const normalized = String(mode || "").trim().toLowerCase();
+  const normalized = normalizeBotMode(mode);
   if (!VALID_MODES.has(normalized)) {
     const err = new Error("invalid_bot_mode");
     err.code = "invalid_bot_mode";
@@ -143,6 +163,8 @@ async function setBotMode(mode) {
 module.exports = {
   getBotMode,
   setBotMode,
+  normalizeBotMode,
+  INITIAL_WELCOME_MESSAGE,
   HOLDING_MESSAGE,
   VALID_MODES: Array.from(VALID_MODES),
   FALLBACK_MODE

@@ -14,4 +14,10 @@ test("el dashboard de conversaciones genera un script valido y con auto refresh"
   assert.match(match[1], /buildTranscriptEntries/);
   assert.match(html, /class="chat-shell"/);
   assert.match(html, /class="bubble-options"/);
+  assert.match(html, /Bot inicial/);
+  assert.match(html, /Bot completo/);
+  assert.match(html, /data\.canUpdate===true/);
+  assert.match(html, /Por seguridad, cambiá el modo desde la PC del bot/);
+  assert.match(html, /Aguardando ser atendido/);
+  assert.match(html, /Atendido/);
 });

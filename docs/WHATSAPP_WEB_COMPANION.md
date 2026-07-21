@@ -54,9 +54,16 @@ Archivos principales:
 
 ## Qué no hace todavía
 
-- No escribe etiquetas nativas del inbox oficial de WhatsApp
+- No puede elegir de forma confiable el color de una etiqueta nativa; rojo y verde se configuran una sola vez en WhatsApp Business
 - No reemplaza el layout original de Meta
 - La extensión, por sí sola, no automatiza el envío de mensajes
+
+El backend local sí sincroniza etiquetas nativas administradas sin borrar etiquetas ajenas. Para la atención simple usa:
+
+- `Aguardando ser atendido`
+- `Atendido`
+
+La primera se aplica cuando entra un caso nuevo en Bot inicial y la segunda cuando una persona de la farmacia responde.
 
 ## Alcance y riesgo del bot
 

@@ -22,7 +22,7 @@ function extractTagIds(value) {
 function statusLabel(status) {
   const value = trimText(status).toLowerCase();
   if (value === "closed") return "Cerrado";
-  if (value === "agent_pending") return "Con asesor";
+  if (value === "agent_pending") return "Aguardando";
   return "Abierto";
 }
 
@@ -64,6 +64,13 @@ function buildFilterGroups(conversations) {
       label: "Vista",
       options: [
         { id: "all", label: "Todo", tags: [], count: safe.length },
+        {
+          id: "esperando_asesor",
+          label: "Aguardando ser atendido",
+          tags: ["esperando_asesor"],
+          count: countTag(safe, "esperando_asesor")
+        },
+        { id: "atendido", label: "Atendido", tags: ["atendido"], count: countTag(safe, "atendido") },
         { id: "test_run", label: "Pruebas", tags: ["test_run"], count: countTag(safe, "test_run") }
       ]
     }

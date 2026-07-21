@@ -438,7 +438,7 @@ async function ensureOpenConversation(contactId, contactName) {
   const activeConversationId = await getActiveConversationId(contactId);
   if (activeConversationId) {
     const openConversation = await getConversation(activeConversationId);
-    if (openConversation && openConversation.status === "open") {
+    if (openConversation && ["open", "agent_pending"].includes(openConversation.status)) {
       return openConversation;
     }
   }
@@ -547,7 +547,7 @@ async function recordFlowTransition({ conversationId: id, flowMeta }) {
       conversation.resolver = "human";
     } else if (explicitlyClearedAdvisor && conversation.status === "agent_pending") {
       conversation.status = "open";
-      conversation.resolver = "automatic";
+      conversation.resolver = sessionData.manualAdvisorIntervened ? "human" : "automatic";
     }
   }
 

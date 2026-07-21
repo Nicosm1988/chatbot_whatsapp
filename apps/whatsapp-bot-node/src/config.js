@@ -97,7 +97,8 @@ const defaultNativeLabelMap = {
   particular: ["Particular"],
   programa_obesidad_y_diabetes: ["Programa de sobrepeso y diabetes"],
   obra_social: ["Obra social"],
-  esperando_asesor: ["Esperando a ser atendido por asesor"],
+  esperando_asesor: ["Aguardando ser atendido", "Esperando a ser atendido por asesor"],
+  atendido: ["Atendido"],
   finalizado: ["Finalizado"],
   test_run: ["Prueba"]
 };

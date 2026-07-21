@@ -44,6 +44,12 @@ function getManagedLabelNames() {
   return Object.values(normalizeManagedLabelMap()).flatMap(names => names);
 }
 
+function getPrimaryManagedLabelNames() {
+  return Object.values(normalizeManagedLabelMap())
+    .map(names => names[0])
+    .filter(Boolean);
+}
+
 function buildManagedTagIdByLabelName() {
   const managedMap = normalizeManagedLabelMap();
   const output = new Map();
@@ -325,7 +331,7 @@ async function bootstrapNativeLabels() {
       return { ok: false, reason: "page_unavailable" };
     }
 
-    const desiredNames = getManagedLabelNames();
+    const desiredNames = getPrimaryManagedLabelNames();
     let catalog = await getNativeLabelCatalog();
     const created = [];
 
@@ -569,6 +575,7 @@ module.exports = {
     buildDesiredNativeLabelIds,
     mapNativeLabelNamesToClientFacingTags,
     buildChatIdCandidates,
+    getPrimaryManagedLabelNames,
     getNativeLabelNamesForContact
   }
 };

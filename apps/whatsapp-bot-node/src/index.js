@@ -47,7 +47,18 @@ const {
 const { processInactivityConversations } = require("./inactivity_cron");
 const { sendTextMessage, sendInteractiveButtons, sendInteractiveList, sendImageMessage } = require("./metaClient");
 const { _private: webTextClientPrivate } = require("./webTextClient");
-const { getBotMode, setBotMode, HOLDING_MESSAGE, VALID_MODES } = require("./bot_mode_store");
+const {
+  getBotMode,
+  setBotMode,
+  INITIAL_WELCOME_MESSAGE,
+  HOLDING_MESSAGE,
+  VALID_MODES
+} = require("./bot_mode_store");
+const {
+  parseBotModeCommand,
+  isOperatorSelfChat,
+  buildBotModeConfirmation
+} = require("./operator_bot_mode_commands");
 const {
   getClient,
   initializeWhatsAppClient,
@@ -97,6 +108,18 @@ const LOCAL_INACTIVITY_CHECK_INTERVAL_MS = Math.max(
   Number(process.env.WHATSAPP_WEB_INACTIVITY_CHECK_INTERVAL_MS || 300000) || 300000
 );
 const MAX_TRACKED_ADVISOR_MESSAGE_IDS = 4000;
+const HUMAN_VISIBLE_OUTBOUND_TYPES = Object.freeze([
+  "audio",
+  "ptt",
+  "image",
+  "video",
+  "document",
+  "sticker",
+  "location",
+  "vcard",
+  "multi_vcard",
+  "poll_creation"
+]);
 const INBOUND_RESET_CHECKPOINT_TTL_MS = 30 * 60 * 1000;
 const COMPANION_FALLBACK_WARN_COOLDOWN_MS = 60000;
 const INBOUND_CONVERSATION_TIMEOUT_MS = Math.max(
@@ -721,17 +744,40 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-app.get("/api/bot-mode", async (_req, res) => {
+function isLoopbackAddress(value) {
+  const address = String(value || "").trim().toLowerCase();
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+}
+
+function canManageBotMode(req) {
+  if (isVercelRuntime) {
+    return false;
+  }
+
+  return isLoopbackAddress(req?.ip || req?.socket?.remoteAddress);
+}
+
+app.get("/api/bot-mode", async (req, res) => {
   try {
     const mode = await getBotMode();
-    res.status(200).json({ mode, validModes: VALID_MODES, holdingMessage: HOLDING_MESSAGE });
+    res.status(200).json({
+      mode,
+      validModes: VALID_MODES,
+      canUpdate: canManageBotMode(req),
+      initialWelcomeMessage: INITIAL_WELCOME_MESSAGE,
+      holdingMessage: HOLDING_MESSAGE
+    });
   } catch (error) {
     console.error("Failed to read bot mode", error);
     res.status(500).json({ error: "bot_mode_read_failed" });
   }
 });
 
-app.post("/api/bot-mode", async (req, res) => {
+async function handleBotModeUpdateRequest(req, res) {
+  if (!canManageBotMode(req)) {
+    return res.status(403).json({ error: "bot_mode_update_not_allowed" });
+  }
+
   try {
     const result = await setBotMode(req.body?.mode);
     res.status(200).json(result);
@@ -742,7 +788,9 @@ app.post("/api/bot-mode", async (req, res) => {
     console.error("Failed to update bot mode", error);
     res.status(500).json({ error: "bot_mode_write_failed" });
   }
-});
+}
+
+app.post("/api/bot-mode", handleBotModeUpdateRequest);
 
 app.post("/webhook", async (req, res) => {
   if (!isCloudTransport) {
@@ -1272,6 +1320,30 @@ function ensureInboundProcessingGeneration(contactId) {
   return 1;
 }
 
+function readConversationTagIds(conversation) {
+  return (Array.isArray(conversation?.tags) ? conversation.tags : [])
+    .map(tag => String(tag && typeof tag === "object" ? tag.id || tag.tagId || "" : tag || "").trim())
+    .filter(Boolean);
+}
+
+function getDurableInitialModeState(conversation) {
+  if (!conversation || String(conversation.status || "").toLowerCase() === "closed") {
+    return { welcomeAlreadySent: false, attendedByHuman: false };
+  }
+
+  const tags = new Set(readConversationTagIds(conversation));
+  const context = conversation.context && typeof conversation.context === "object" ? conversation.context : {};
+  const attendedByHuman = tags.has("atendido") || context.manualAdvisorIntervened === true;
+  const welcomeAlreadySent = Boolean(
+    attendedByHuman ||
+      tags.has("esperando_asesor") ||
+      String(conversation.status || "").toLowerCase() === "agent_pending" ||
+      (context.automationMode === "initial" && context.initialWelcomeSent === true)
+  );
+
+  return { welcomeAlreadySent, attendedByHuman };
+}
+
 async function handleInboundConversation({
   contactId,
   contactName,
@@ -1307,13 +1379,55 @@ async function handleInboundConversation({
     () => buildTimeoutError("bot_mode_timeout", "La consulta de modo del bot excedio el tiempo esperado.", { contactId })
   );
   const replyHandler = config.agenticMode ? nextAgentBotReply : nextRuleBotReply;
-  const flowResult =
-    botMode === "holding"
-      ? {
-          actions: [{ type: "text", text: HOLDING_MESSAGE }],
-          meta: { routeKey: "holding_auto_reply", mode: "holding" }
+  let flowResult;
+  if (botMode === "holding") {
+    const auditConversation = await auditConversationPromise;
+    let durableInitialState = getDurableInitialModeState(auditConversation);
+
+    if (!auditConversation && isWebTransport && config.whatsappWebNativeLabelsEnabled) {
+      const [nativeWaiting, nativeAttended] = await Promise.all([
+        hasManagedNativeLabelForContact(contactId, "esperando_asesor").catch(() => false),
+        hasManagedNativeLabelForContact(contactId, "atendido").catch(() => false)
+      ]);
+      durableInitialState = {
+        welcomeAlreadySent: nativeWaiting || nativeAttended,
+        attendedByHuman: nativeAttended
+      };
+    }
+
+    const initialState = await withTimeout(
+      conversationRulesPrivate.enterInitialBotMode(contactId, {
+        contactName,
+        ...durableInitialState
+      }),
+      INBOUND_CONVERSATION_TIMEOUT_MS,
+      () =>
+        buildTimeoutError(
+          "initial_mode_timeout",
+          `La logica del Bot inicial excedio ${INBOUND_CONVERSATION_TIMEOUT_MS} ms.`,
+          { contactId }
+        )
+    );
+    const shouldSendWelcome = Boolean(initialState?.shouldSendWelcome);
+    flowResult = {
+      actions: shouldSendWelcome ? [{ type: "text", text: INITIAL_WELCOME_MESSAGE }] : [],
+      meta: {
+        routeKey: shouldSendWelcome ? "initial_welcome" : "initial_waiting",
+        mode: "holding",
+        after: initialState?.state || { state: "agent", step: null },
+        handedToHuman: Boolean(initialState?.sessionData?.waitingAdvisor),
+        sessionData: initialState?.sessionData || {
+          automationMode: "initial",
+          initialWelcomeSent: true,
+          waitingAdvisor: true,
+          advisorHandoffReason: "bot_initial_welcome",
+          manualAdvisorIntervened: false,
+          finalized: false
         }
-      : await withTimeout(
+      }
+    };
+  } else {
+    flowResult = await withTimeout(
           replyHandler({
             contactId,
             contactName,
@@ -1328,6 +1442,7 @@ async function handleInboundConversation({
               { contactId }
             )
         );
+  }
 
   if (isStaleInboundProcessing(contactId, processingGeneration)) {
     console.log(`Se descarto una respuesta obsoleta para ${contactId} tras un reinicio de flujo mas nuevo.`);
@@ -1337,8 +1452,7 @@ async function handleInboundConversation({
   if (isWebTransport && config.whatsappWebNativeLabelsEnabled) {
     runDetachedTask(async () => {
       await syncNativeLabelsForSession(contactId, {
-        ...(flowResult?.meta?.sessionData || {}),
-        waitingAdvisor: Boolean(flowResult?.meta?.handedToHuman)
+        ...(flowResult?.meta?.sessionData || {})
       });
       if (shouldSyncInlineLabelNames()) {
         await syncConnectedBrowserCompanionOverlay();
@@ -1354,7 +1468,7 @@ async function handleInboundConversation({
     });
   };
 
-  if (FAST_WEB_RESPONSE_MODE) {
+  if (FAST_WEB_RESPONSE_MODE && botMode !== "holding") {
     runDetachedTask(recordFlowTransitionTask, "Audit flow transition failed:");
   } else {
     await recordFlowTransitionTask().catch(error => {
@@ -1610,6 +1724,8 @@ async function handleAdvisorClosureByHumanMessage(msg) {
     ""
   ).trim();
   const outboundText = String(msg?.body || "").trim();
+  const outboundType = String(msg?.type || msg?._data?.type || "chat").trim().toLowerCase();
+  const hasMedia = Boolean(msg?.hasMedia || msg?._data?.isMedia);
 
   if (
     isProcessedAdvisorClosureMessageId(messageId) ||
@@ -1624,10 +1740,56 @@ async function handleAdvisorClosureByHumanMessage(msg) {
   }
 
   const contactId = normalizeWebContactId(rawTo);
+  return handleOperatorOutgoingMessage({
+    messageId,
+    contactId,
+    outboundText,
+    outboundType,
+    hasMedia
+  });
+}
+
+function getOwnWhatsAppId() {
+  const client = getClient();
+  return client?.info?.wid?._serialized || client?.info?.wid || client?.info?.me || "";
+}
+
+function hasHumanOutboundContent({ outboundText, outboundType, hasMedia } = {}) {
+  const type = String(outboundType || "").trim().toLowerCase();
+  return Boolean(
+    String(outboundText || "").trim() ||
+      hasMedia ||
+      HUMAN_VISIBLE_OUTBOUND_TYPES.includes(type)
+  );
+}
+
+function isActiveAuditConversation(conversation) {
+  return Boolean(
+    conversation && ["open", "agent_pending"].includes(String(conversation.status || "").trim().toLowerCase())
+  );
+}
+
+async function handleOperatorOutgoingMessage({ messageId, contactId, outboundText, outboundType, hasMedia }) {
+  const command = parseBotModeCommand(outboundText);
+  if (command && isOperatorSelfChat(contactId, getOwnWhatsAppId())) {
+    if (messageId) {
+      markProcessedAdvisorClosureMessageId(messageId);
+    }
+
+    const result = await setBotMode(command.mode);
+    const persistenceNotice = result.persisted
+      ? ""
+      : " El cambio quedó activo en esta PC, pero debe revisarse antes del próximo reinicio.";
+    await sendTextMessage(contactId, `${buildBotModeConfirmation(command)}${persistenceNotice}`);
+    return true;
+  }
+
   return handleAdvisorHumanOutgoingMessage({
     messageId,
     contactId,
-    outboundText
+    outboundText,
+    outboundType,
+    hasMedia
   });
 }
 
@@ -1656,18 +1818,23 @@ async function handleAdvisorClosureCandidate({ messageId, contactId, outboundTex
   const resolvedContactId = await resolveConversationContactId(contactId);
   const currentState = await conversationRules._private.getContactConversationState(resolvedContactId);
   const conversation = await findLatestConversationByContactId(resolvedContactId);
-  const nativeConversation =
-    isWebTransport && config.whatsappWebNativeLabelsEnabled
-      ? (await listNativeLabelConversations({ limit: 5, contactId: resolvedContactId }).catch(() => []))[0] || null
-      : null;
   const waitingAdvisor = Boolean(currentState?.sessionData?.waitingAdvisor || currentState?.state === "agent");
   const hasRuntimeConversation = hasManagedRuntimeConversationState(currentState);
   const nativeWaitingAdvisor =
     isWebTransport && config.whatsappWebNativeLabelsEnabled
       ? await hasManagedNativeLabelForContact(resolvedContactId, "esperando_asesor").catch(() => false)
       : false;
-  const hasKnownConversation = Boolean(conversation || nativeConversation);
-  if (!waitingAdvisor && !nativeWaitingAdvisor && !hasRuntimeConversation && !hasKnownConversation) {
+  const nativeAttended =
+    isWebTransport && config.whatsappWebNativeLabelsEnabled
+      ? await hasManagedNativeLabelForContact(resolvedContactId, "atendido").catch(() => false)
+      : false;
+  if (
+    !waitingAdvisor &&
+    !nativeWaitingAdvisor &&
+    !nativeAttended &&
+    !hasRuntimeConversation &&
+    !isActiveAuditConversation(conversation)
+  ) {
     return false;
   }
 
@@ -1733,8 +1900,8 @@ async function handleAdvisorClosureCandidate({ messageId, contactId, outboundTex
   return true;
 }
 
-async function handleAdvisorHumanOutgoingMessage({ messageId, contactId, outboundText }) {
-  if (!contactId || !outboundText) {
+async function handleAdvisorHumanOutgoingMessage({ messageId, contactId, outboundText, outboundType, hasMedia }) {
+  if (!contactId || !hasHumanOutboundContent({ outboundText, outboundType, hasMedia })) {
     return false;
   }
 
@@ -1750,14 +1917,18 @@ async function handleAdvisorHumanOutgoingMessage({ messageId, contactId, outboun
   const resolvedContactId = await resolveConversationContactId(contactId);
   const currentState = await conversationRules._private.getContactConversationState(resolvedContactId).catch(() => null);
   const conversation = await findLatestConversationByContactId(resolvedContactId).catch(() => null);
-  const nativeConversation =
-    isWebTransport && config.whatsappWebNativeLabelsEnabled
-      ? (await listNativeLabelConversations({ limit: 5, contactId: resolvedContactId }).catch(() => []))[0] || null
-      : null;
   const waitingAdvisor = Boolean(currentState?.sessionData?.waitingAdvisor || currentState?.state === "agent");
   const hasRuntimeConversation = hasManagedRuntimeConversationState(currentState);
-  const hasKnownConversation = Boolean(conversation || nativeConversation);
-  if (!waitingAdvisor && !hasRuntimeConversation && !hasKnownConversation) {
+  const nativeWaitingAdvisor =
+    isWebTransport && config.whatsappWebNativeLabelsEnabled
+      ? await hasManagedNativeLabelForContact(resolvedContactId, "esperando_asesor").catch(() => false)
+      : false;
+  if (
+    !waitingAdvisor &&
+    !nativeWaitingAdvisor &&
+    !hasRuntimeConversation &&
+    !isActiveAuditConversation(conversation)
+  ) {
     return false;
   }
 
@@ -1779,6 +1950,35 @@ async function handleAdvisorHumanOutgoingMessage({ messageId, contactId, outboun
         console.error("Fallo actualizando las etiquetas inline tras la intervencion manual del asesor:", error?.message || error);
       });
     }
+  }
+
+  if (conversation?.id) {
+    await recordFlowTransition({
+      conversationId: conversation.id,
+      flowMeta: {
+        routeKey: "advisor_manual_control",
+        after: {
+          state: "agent",
+          step: null
+        },
+        closed: false,
+        handedToHuman: false,
+        sessionData
+      }
+    }).catch(error => {
+      console.error("Fallo registrando la intervencion manual del asesor:", error?.message || error);
+    });
+
+    await recordOutboundMessage({
+      conversationId: conversation.id,
+      action: {
+        type: String(outboundType || "").trim().toLowerCase() || "text",
+        text: String(outboundText || "").trim()
+      },
+      status: "sent"
+    }).catch(error => {
+      console.error("Fallo auditando el mensaje manual del asesor:", error?.message || error);
+    });
   }
 
   return true;
@@ -2448,10 +2648,12 @@ async function collectWebOutgoingMessages({
 
   try {
     return await page.evaluate(
-      ({ minTimestamp: innerMinTimestamp, limit: innerLimit }) => {
+      ({ minTimestamp: innerMinTimestamp, limit: innerLimit, humanVisibleTypes }) => {
         if (!window.Store?.Msg?.getModelsArray) {
           return [];
         }
+
+        const visibleTypes = new Set(humanVisibleTypes);
 
         return window.Store.Msg.getModelsArray()
           .filter(message => {
@@ -2468,8 +2670,12 @@ async function collectWebOutgoingMessages({
               !message?.isStatusV3 &&
               !String(remote || "").includes("@g.us") &&
               Number(message.t || 0) >= innerMinTimestamp &&
-              typeof message.body === "string" &&
-              message.body.trim()
+              (
+                (typeof message.body === "string" && message.body.trim()) ||
+                message.isMedia ||
+                message.mediaData ||
+                visibleTypes.has(String(message.type || "").toLowerCase())
+              )
             );
           })
           .sort((left, right) => Number(left.t || 0) - Number(right.t || 0))
@@ -2483,10 +2689,12 @@ async function collectWebOutgoingMessages({
               message.chat?.id?._serialized ||
               null,
             body: message.body || "",
+            type: message.type || "chat",
+            hasMedia: Boolean(message.isMedia || message.mediaData),
             timestamp: Number(message.t || 0)
           }));
       },
-      { minTimestamp, limit }
+      { minTimestamp, limit, humanVisibleTypes: HUMAN_VISIBLE_OUTBOUND_TYPES }
     );
   } catch (error) {
     const message = String(error?.message || error || "");
@@ -2524,10 +2732,12 @@ async function pollAdvisorClosureMessages() {
       continue;
     }
 
-    await handleAdvisorHumanOutgoingMessage({
+    await handleOperatorOutgoingMessage({
       messageId,
       contactId: normalizeWebContactId(message.to),
-      outboundText: String(message.body || "").trim()
+      outboundText: String(message.body || "").trim(),
+      outboundType: String(message.type || "chat"),
+      hasMedia: Boolean(message.hasMedia)
     });
   }
 }
@@ -2811,7 +3021,14 @@ module.exports._private = {
   markQueueStarted,
   clearQueueStarted,
   handleAdvisorClosureByHumanMessage,
+  handleOperatorOutgoingMessage,
   handleAdvisorHumanOutgoingMessage,
+  hasHumanOutboundContent,
+  isActiveAuditConversation,
+  getDurableInitialModeState,
+  isLoopbackAddress,
+  canManageBotMode,
+  handleBotModeUpdateRequest,
   handleNormalizedWebIncomingMessage,
   selectLatestRecoverableWebMessages,
   buildInactivityCronErrorResponse,

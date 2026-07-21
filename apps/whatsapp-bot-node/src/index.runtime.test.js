@@ -32,6 +32,83 @@ function makeContactId() {
   return `54911${Date.now()}${Math.floor(Math.random() * 1000)}@lid`;
 }
 
+test("el cambio de modo por HTTP solo admite conexiones locales", () => {
+  assert.equal(_private.isLoopbackAddress("127.0.0.1"), true);
+  assert.equal(_private.isLoopbackAddress("::1"), true);
+  assert.equal(_private.isLoopbackAddress("::ffff:127.0.0.1"), true);
+  assert.equal(_private.isLoopbackAddress("192.168.1.30"), false);
+  assert.equal(_private.canManageBotMode({ ip: "127.0.0.1" }), true);
+  assert.equal(_private.canManageBotMode({ ip: "203.0.113.10" }), false);
+});
+
+test("el endpoint de modo rechaza una solicitud externa", async () => {
+  let statusCode = null;
+  let payload = null;
+  const response = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      payload = body;
+      return this;
+    }
+  };
+
+  await _private.handleBotModeUpdateRequest(
+    { ip: "203.0.113.10", body: { mode: "holding" } },
+    response
+  );
+
+  assert.equal(statusCode, 403);
+  assert.deepEqual(payload, { error: "bot_mode_update_not_allowed" });
+});
+
+test("el Bot inicial recupera la espera y la atencion desde la auditoria durable", () => {
+  assert.deepEqual(
+    _private.getDurableInitialModeState({
+      status: "agent_pending",
+      tags: ["esperando_asesor"],
+      context: { automationMode: "initial", initialWelcomeSent: true }
+    }),
+    { welcomeAlreadySent: true, attendedByHuman: false }
+  );
+
+  assert.deepEqual(
+    _private.getDurableInitialModeState({
+      status: "open",
+      tags: [{ id: "atendido" }],
+      context: { manualAdvisorIntervened: true }
+    }),
+    { welcomeAlreadySent: true, attendedByHuman: true }
+  );
+
+  assert.deepEqual(
+    _private.getDurableInitialModeState({
+      status: "closed",
+      tags: ["atendido"],
+      context: { manualAdvisorIntervened: true }
+    }),
+    { welcomeAlreadySent: false, attendedByHuman: false }
+  );
+});
+
+test("un audio o archivo humano cuenta como atencion aunque no tenga texto", () => {
+  assert.equal(_private.hasHumanOutboundContent({ outboundType: "ptt", outboundText: "" }), true);
+  assert.equal(_private.hasHumanOutboundContent({ hasMedia: true, outboundText: "" }), true);
+  assert.equal(_private.hasHumanOutboundContent({ outboundType: "location", outboundText: "" }), true);
+  assert.equal(_private.hasHumanOutboundContent({ outboundType: "vcard", outboundText: "" }), true);
+  assert.equal(_private.hasHumanOutboundContent({ outboundType: "poll_creation", outboundText: "" }), true);
+  assert.equal(_private.hasHumanOutboundContent({ outboundType: "chat", outboundText: "" }), false);
+});
+
+test("una conversacion historica cerrada no vuelve a quedar Atendida por un mensaje posterior", () => {
+  assert.equal(_private.isActiveAuditConversation({ status: "open" }), true);
+  assert.equal(_private.isActiveAuditConversation({ status: "agent_pending" }), true);
+  assert.equal(_private.isActiveAuditConversation({ status: "closed" }), false);
+  assert.equal(_private.isActiveAuditConversation(null), false);
+});
+
 function buttonMessage(id, title) {
   return {
     type: "interactive",
@@ -139,7 +216,7 @@ test("la intervencion manual del asesor detectada desde otra variante del contac
 
   const currentState = await conversationRules._private.getContactConversationState(lidContactId);
   assert.equal(currentState?.state, "agent");
-  assert.equal(currentState?.sessionData?.waitingAdvisor, true);
+  assert.equal(currentState?.sessionData?.waitingAdvisor, false);
   assert.equal(currentState?.sessionData?.manualAdvisorIntervened, true);
 
   const afterCustomerReply = await conversationRules.nextBotReply({
@@ -470,6 +547,26 @@ test("cuando el asesor escribe manualmente tras el resumen final, el bot guarda 
   });
 
   assert.equal(Array.isArray(afterCustomerReply.actions) ? afterCustomerReply.actions.length : 0, 0);
+});
+
+test("un audio del asesor sin texto cambia la espera a Atendido", async () => {
+  const contactId = makeContactId();
+  await conversationRules._private.resetContactState(contactId);
+  await conversationRules._private.enterInitialBotMode(contactId, { contactName: "Cliente" });
+
+  const handled = await _private.handleAdvisorHumanOutgoingMessage({
+    messageId: `advisor-audio-${Date.now()}`,
+    contactId,
+    outboundText: "",
+    outboundType: "ptt",
+    hasMedia: true
+  });
+
+  assert.equal(handled, true);
+
+  const currentState = await conversationRules._private.getContactConversationState(contactId);
+  assert.equal(currentState?.sessionData?.waitingAdvisor, false);
+  assert.equal(currentState?.sessionData?.manualAdvisorIntervened, true);
 });
 
 test("el cierre manual del asesor funciona tambien cuando el chat quedo idle esperando asesor", async () => {

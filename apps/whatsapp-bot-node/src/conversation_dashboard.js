@@ -56,6 +56,8 @@ function renderConversationDashboard() {
     .tag.particular,.tag.category-particular{background:rgba(41,203,141,.16);border-color:rgba(41,203,141,.44);color:#9ce6c6}
     .tag.programa_obesidad_y_diabetes,.tag.category-programa{background:rgba(233,96,164,.16);border-color:rgba(233,96,164,.45);color:#ffc2df}
     .tag.obra_social,.tag.category-obra-social{background:rgba(126,132,255,.16);border-color:rgba(126,132,255,.45);color:#ccd0ff}
+    .tag.esperando_asesor,.tag.status-waiting{background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.48);color:#ffc2c2}
+    .tag.atendido,.tag.status-attended{background:rgba(41,203,141,.16);border-color:rgba(41,203,141,.48);color:#9ce6c6}
     .tag.test_run,.tag.misc-prueba{background:rgba(255,122,122,.16);border-color:rgba(255,122,122,.45);color:#ffc2c2}
     .status{margin-left:auto;color:var(--muted);font-size:12px}
     .mode-toggle{
@@ -160,6 +162,8 @@ function renderConversationDashboard() {
     .wa-label.particular{--dot:#29cb8d}
     .wa-label.programa_obesidad_y_diabetes{--dot:#e960a4}
     .wa-label.obra_social{--dot:#7e84ff}
+    .wa-label.esperando_asesor{--dot:#ff5a5a}
+    .wa-label.atendido{--dot:#29cb8d}
     .wa-label.test_run{--dot:#ff7a7a}
     .top-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
     .meta{font-size:12px;color:var(--muted);margin-top:4px}
@@ -332,9 +336,9 @@ function renderConversationDashboard() {
     <section class="top">
       <div class="line"><span class="tag">cliente</span><h1 class="title">Seguimiento de Conversaciones</h1>
         <div id="mode-toggle" class="mode-toggle">
-          <span class="mode-label">Modo</span>
+          <span class="mode-label">Modo activo</span>
           <span id="mode-text" class="mode-text">Cargando…</span>
-          <label class="switch" title="Activar mensaje provisorio">
+          <label class="switch" title="Cambiar entre Bot completo y Bot inicial">
             <input type="checkbox" id="mode-switch" disabled />
             <span class="slider"></span>
           </label>
@@ -347,7 +351,7 @@ function renderConversationDashboard() {
         <select class="ctrl" id="q-status">
           <option value="">Todos los estados</option>
           <option value="open">Abierto</option>
-          <option value="agent_pending">Con asesor</option>
+          <option value="agent_pending">Aguardando atención</option>
           <option value="closed">Cerrado</option>
         </select>
         <select class="ctrl" id="q-mode">
@@ -363,6 +367,8 @@ function renderConversationDashboard() {
         </select>
         <select class="ctrl" id="q-tag">
           <option value="">Todo</option>
+          <option value="esperando_asesor">Aguardando ser atendido</option>
+          <option value="atendido">Atendido</option>
           <option value="test_run">Solo pruebas</option>
         </select>
         <button class="btn" id="b-refresh">Actualizar</button>
@@ -404,7 +410,7 @@ function renderConversationDashboard() {
     function setStatus(text){statusEl.textContent=text;}
     function normalize(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
     function statusClass(status){if(status==="closed")return"closed";if(status==="agent_pending")return"pending";return"open";}
-    function statusLabel(status){if(status==="closed")return"Cerrado";if(status==="agent_pending")return"Con asesor";return"Abierto";}
+    function statusLabel(status){if(status==="closed")return"Cerrado";if(status==="agent_pending")return"Aguardando";return"Abierto";}
     function fmtClock(ts){
       try{return new Date(ts).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});}catch(_e){return"";}
     }
@@ -496,12 +502,14 @@ function renderConversationDashboard() {
         particular:"Particular",
         programa_obesidad_y_diabetes:"Programa de sobrepeso y diabetes",
         obra_social:"Obra social",
+        esperando_asesor:"Aguardando ser atendido",
+        atendido:"Atendido",
         test_run:"Prueba"
       };
       return map[String(tag||"").trim()]||"";
     }
     function getClientFacingTags(tags){
-      return ["delivery","mostrador","particular","programa_obesidad_y_diabetes","obra_social","test_run"]
+      return ["delivery","mostrador","particular","programa_obesidad_y_diabetes","obra_social","esperando_asesor","atendido","test_run"]
         .filter(function(tag){ return Array.isArray(tags) && tags.indexOf(tag) >= 0; })
         .map(function(tag){ return { id: tag, label: friendlyTagLabel(tag) }; });
     }
@@ -512,6 +520,8 @@ function renderConversationDashboard() {
         particular:"particular category-particular",
         programa_obesidad_y_diabetes:"programa_obesidad_y_diabetes category-programa",
         obra_social:"obra_social category-obra-social",
+        esperando_asesor:"esperando_asesor status-waiting",
+        atendido:"atendido status-attended",
         test_run:"test_run misc-prueba"
       };
       return map[String(tagId||"").trim()]||"";
@@ -773,6 +783,8 @@ function renderConversationDashboard() {
       if(initialTags.indexOf("particular") >= 0) qCategory.value = "particular";
       if(initialTags.indexOf("programa_obesidad_y_diabetes") >= 0) qCategory.value = "programa_obesidad_y_diabetes";
       if(initialTags.indexOf("obra_social") >= 0) qCategory.value = "obra_social";
+      if(initialTags.indexOf("esperando_asesor") >= 0) qTag.value = "esperando_asesor";
+      if(initialTags.indexOf("atendido") >= 0) qTag.value = "atendido";
       if(initialTags.indexOf("test_run") >= 0) qTag.value = "test_run";
       if(qTag.value==="test_run"){
         tagLocked = true;
@@ -788,10 +800,11 @@ function renderConversationDashboard() {
     var modeToggleEl=document.getElementById("mode-toggle");
     var modeSwitchEl=document.getElementById("mode-switch");
     var modeTextEl=document.getElementById("mode-text");
+    var canUpdateBotMode=false;
     function applyModeUi(mode){
       var isHolding=mode==="holding";
       modeSwitchEl.checked=isHolding;
-      modeTextEl.textContent=isHolding?"Mensaje provisorio":"Chatbot completo";
+      modeTextEl.textContent=isHolding?"Bot inicial":"Bot completo";
       modeToggleEl.classList.toggle("holding",isHolding);
     }
     async function loadBotMode(){
@@ -800,7 +813,11 @@ function renderConversationDashboard() {
         if(!res.ok)throw new Error("status_"+res.status);
         var data=await res.json();
         applyModeUi(data.mode);
-        modeSwitchEl.disabled=false;
+        canUpdateBotMode=data.canUpdate===true;
+        modeSwitchEl.disabled=!canUpdateBotMode;
+        modeToggleEl.title=canUpdateBotMode
+          ?"Podés cambiar el modo desde esta PC"
+          :"Por seguridad, cambiá el modo desde la PC del bot o escribiendo el comando en tu propio chat";
       }catch(err){
         console.error("bot-mode load failed",err);
         modeTextEl.textContent="No disponible";
@@ -826,7 +843,7 @@ function renderConversationDashboard() {
         modeSwitchEl.checked=!modeSwitchEl.checked;
         alert("No se pudo cambiar el modo del bot. Intentá de nuevo.");
       }finally{
-        modeSwitchEl.disabled=false;
+        modeSwitchEl.disabled=!canUpdateBotMode;
       }
     });
     loadBotMode();

@@ -2447,7 +2447,12 @@ function snapshotSessionData(data) {
     orderType: String(input.orderType || ""),
     recipes: Number(input.recipes || 0),
     items: Number(input.items || itemsList.length || 0),
-    waitingAdvisor: Boolean(input.waitingAdvisor)
+    waitingAdvisor: Boolean(input.waitingAdvisor),
+    advisorHandoffReason: String(input.advisorHandoffReason || ""),
+    manualAdvisorIntervened: Boolean(input.manualAdvisorIntervened),
+    finalized: Boolean(input.finalized),
+    automationMode: String(input.automationMode || ""),
+    initialWelcomeSent: Boolean(input.initialWelcomeSent)
   };
 }
 
@@ -4955,7 +4960,9 @@ function snapshotSessionData(data) {
     waitingAdvisor: Boolean(input.waitingAdvisor),
     advisorHandoffReason: String(input.advisorHandoffReason || ""),
     manualAdvisorIntervened: Boolean(input.manualAdvisorIntervened),
-    finalized: Boolean(input.finalized)
+    finalized: Boolean(input.finalized),
+    automationMode: String(input.automationMode || ""),
+    initialWelcomeSent: Boolean(input.initialWelcomeSent)
   };
 }
 
@@ -5064,6 +5071,84 @@ async function closeContactConversation(contactId) {
   return sessionData;
 }
 
+async function enterInitialBotMode(
+  contactId,
+  { contactName, welcomeAlreadySent = false, attendedByHuman = false } = {}
+) {
+  if (!contactId) {
+    return null;
+  }
+
+  await hydrateState(contactId);
+  cleanupExpiredSessions();
+  const session = getSession(contactId);
+  const profile = getProfile(contactId, contactName);
+  const currentData = session.data && typeof session.data === "object" ? session.data : {};
+
+  if (attendedByHuman) {
+    resetSession(session);
+    session.state = S.AGENT;
+    session.step = null;
+    session.lastTransition = null;
+    session.fallback = 0;
+    session.data = {
+      automationMode: "initial",
+      initialWelcomeSent: true,
+      waitingAdvisor: false,
+      advisorHandoffReason: "manual_advisor",
+      manualAdvisorIntervened: true,
+      finalized: false
+    };
+
+    touchSession(contactId, session);
+    await persistState(contactId, session, profile);
+    return {
+      shouldSendWelcome: false,
+      state: buildSessionSnapshot(session),
+      sessionData: snapshotSessionData(session.data)
+    };
+  }
+
+  if (currentData.manualAdvisorIntervened) {
+    return {
+      shouldSendWelcome: false,
+      state: buildSessionSnapshot(session),
+      sessionData: snapshotSessionData(currentData)
+    };
+  }
+
+  if (currentData.automationMode === "initial" && currentData.initialWelcomeSent) {
+    return {
+      shouldSendWelcome: false,
+      state: buildSessionSnapshot(session),
+      sessionData: snapshotSessionData(currentData)
+    };
+  }
+
+  resetSession(session);
+  session.state = S.AGENT;
+  session.step = null;
+  session.lastTransition = null;
+  session.fallback = 0;
+  session.data = {
+    automationMode: "initial",
+    initialWelcomeSent: true,
+    waitingAdvisor: true,
+    advisorHandoffReason: "bot_initial_welcome",
+    manualAdvisorIntervened: false,
+    finalized: false
+  };
+
+  touchSession(contactId, session);
+  await persistState(contactId, session, profile);
+
+  return {
+    shouldSendWelcome: !welcomeAlreadySent,
+    state: buildSessionSnapshot(session),
+    sessionData: snapshotSessionData(session.data)
+  };
+}
+
 async function markAdvisorManualControl(contactId) {
   if (!contactId) {
     return null;
@@ -5081,7 +5166,7 @@ async function markAdvisorManualControl(contactId) {
   session.step = null;
   session.lastTransition = null;
   session.fallback = 0;
-  session.data.waitingAdvisor = true;
+  session.data.waitingAdvisor = false;
   session.data.manualAdvisorIntervened = true;
   session.data.finalized = false;
   if (!String(session.data.advisorHandoffReason || "").trim()) {
@@ -5599,6 +5684,7 @@ module.exports = {
     markInboundFingerprint,
     getContactConversationState,
     closeContactConversation,
+    enterInitialBotMode,
     markAdvisorManualControl,
     forceParticularSearchFlow,
     rememberExternalPromptActions

@@ -22,8 +22,12 @@ function normalizeOrderTypeTag(orderType) {
   return "";
 }
 
-function normalizeWaitingAdvisorTag(waitingAdvisor) {
-  return waitingAdvisor === true ? "esperando_asesor" : "";
+function normalizeWaitingAdvisorTag(waitingAdvisor, manualAdvisorIntervened) {
+  return waitingAdvisor === true && manualAdvisorIntervened !== true ? "esperando_asesor" : "";
+}
+
+function normalizeAttendedTag(manualAdvisorIntervened, finalized) {
+  return manualAdvisorIntervened === true && finalized !== true ? "atendido" : "";
 }
 
 function normalizeFinalizedTag(finalized) {
@@ -49,7 +53,14 @@ function mergeConversationContextTags(existingTags, sessionData) {
   const mode = trimText(sessionData?.mode);
   const orderType = trimText(sessionData?.orderType);
   const zone = trimText(sessionData?.zone).toLowerCase();
-  const waitingAdvisorTag = normalizeWaitingAdvisorTag(sessionData?.waitingAdvisor);
+  const waitingAdvisorTag = normalizeWaitingAdvisorTag(
+    sessionData?.waitingAdvisor,
+    sessionData?.manualAdvisorIntervened
+  );
+  const attendedTag = normalizeAttendedTag(
+    sessionData?.manualAdvisorIntervened,
+    sessionData?.finalized
+  );
   const finalizedTag = normalizeFinalizedTag(sessionData?.finalized);
 
   for (const existingTag of Array.from(tags)) {
@@ -75,6 +86,7 @@ function mergeConversationContextTags(existingTags, sessionData) {
   }
 
   tags.delete("esperando_asesor");
+  tags.delete("atendido");
   tags.delete("finalizado");
 
   if (orderType) {
@@ -97,6 +109,9 @@ function mergeConversationContextTags(existingTags, sessionData) {
   }
   if (waitingAdvisorTag) {
     tags.add(waitingAdvisorTag);
+  }
+  if (attendedTag) {
+    tags.add(attendedTag);
   }
   if (finalizedTag) {
     tags.add(finalizedTag);
@@ -136,6 +151,7 @@ function getClientFacingConversationTags(tags) {
     "programa_obesidad_y_diabetes",
     "obra_social",
     "esperando_asesor",
+    "atendido",
     "finalizado",
     "test_run"
   ];
@@ -155,7 +171,8 @@ function formatClientFacingTagLabel(tag) {
   if (value === "particular") return "Particular";
   if (value === "programa_obesidad_y_diabetes") return "Programa de sobrepeso y diabetes";
   if (value === "obra_social") return "Obra social";
-  if (value === "esperando_asesor") return "Esperando a ser atendido por asesor";
+  if (value === "esperando_asesor") return "Aguardando ser atendido";
+  if (value === "atendido") return "Atendido";
   if (value === "finalizado") return "Finalizado";
   if (value === "test_run") return "Prueba";
   return "";

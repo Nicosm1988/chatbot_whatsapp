@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-07-13T21:15:18-03:00",
+    "lastUpdated": "2026-07-21T19:33:32-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -206,7 +206,9 @@
                     "Ayuda"
                 ],
                 "groupedProductRowsBold": true,
-                "advisorWaitingNativeLabel": "Esperando a ser atendido por asesor",
+                "advisorWaitingNativeLabel": "Aguardando ser atendido",
+                "advisorAttendedNativeLabel": "Atendido",
+                "nativeLabelColorsRequireOneTimeManualSetup": true,
                 "finalizedNativeLabel": "Finalizado",
                 "managedNativeLabels": [
                     "Delivery",
@@ -215,7 +217,8 @@
                     "Programa de sobrepeso y diabetes",
                     "Obra social",
                     "Prueba",
-                    "Esperando a ser atendido por asesor",
+                    "Aguardando ser atendido",
+                    "Atendido",
                     "Finalizado"
                 ],
                 "silentLauncherScript": "apps/whatsapp-bot-node/scripts/start_whatsapp_bot_silent.ps1",
@@ -226,7 +229,7 @@
                 "watchdogRuntimeCurrentlyVerified": false,
                 "scheduledTaskInstalledLocal": false,
                 "scheduledTaskFallbackReason": "access_denied",
-                "fullAutomatedSuitePassing": 127,
+                "fullAutomatedSuitePassing": 145,
                 "fullAutomatedSuiteSkipped": 2,
                 "webFocusedSuitePassing": 71,
                 "webFocusedSuiteSkipped": 2,
@@ -261,7 +264,25 @@
                 "leftChatListInlineNamesRevalidatedAfterLauncherFix": true,
                 "staleObservedPageCloseNoLongerKillsHealthyRuntime": true,
                 "connectedBrowserRecoveryUsesLiveBrowserPages": true,
-                "connectedBrowserReconnectViaPuppeteerEnabled": true
+                "connectedBrowserReconnectViaPuppeteerEnabled": true,
+                "publicBotModes": [
+                    "Bot inicial",
+                    "Bot completo"
+                ],
+                "botInitialWelcomeOncePerConversation": true,
+                "botInitialWelcomeDurableAcrossRestart": true,
+                "botInitialSilencesRepeatedCustomerMessages": true,
+                "firstHumanReplyMarksAttended": true,
+                "humanMediaReplyMarksAttended": true,
+                "agentPendingAuditConversationReused": true,
+                "closedAuditConversationCannotBeRemarkedAttended": true,
+                "selfChatModeCommandsEnabled": true,
+                "botModeHttpUpdateScope": "local_loopback_only_no_public_proxy",
+                "pharmacyNumberSelectionMechanism": "qr_linked_whatsapp_business_account",
+                "pharmacyNumberLiveValidationPending": true,
+                "currentLinuxRuntimeRunning": false,
+                "exactReleaseReconciliationPending": true,
+                "botCompleteLivePlexCheckPending": true
             }
         }
     },
@@ -360,7 +381,16 @@
         "advisorClosureRestartsAutomationForReturningCustomer": true,
         "treatmentSummaryAllowsAddMore": false,
         "visibleGuidedRestartChoice": false,
-        "particularRealCustomerPathHandsToAdvisor": true
+        "particularRealCustomerPathHandsToAdvisor": true,
+        "botInitialMode": true,
+        "botCompleteMode": true,
+        "botModeDashboardSwitch": true,
+        "botModeDashboardSwitchLocalOnly": true,
+        "botModeSelfChatCommands": true,
+        "botInitialWelcomeApproved": false,
+        "waitingToAttendedAutomaticTransition": true,
+        "waitingLabelDashboardTone": "red",
+        "attendedLabelDashboardTone": "green"
     },
     "audit": {
         "conversationTimeline": true,
@@ -375,7 +405,8 @@
             "programa_obesidad_y_diabetes",
             "obra_social",
             "test_run",
-            "esperando_asesor"
+            "esperando_asesor",
+            "atendido"
         ],
         "multiTagFiltering": "comma_separated_and",
         "conversationDashboardFiltersValidatedInProduction": true,
@@ -408,7 +439,8 @@
             "Programa de sobrepeso y diabetes",
             "Obra social",
             "Prueba",
-            "Esperando a ser atendido por asesor",
+            "Aguardando ser atendido",
+            "Atendido",
             "Finalizado"
         ]
     },

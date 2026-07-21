@@ -520,7 +520,7 @@ async function ensureOpenConversation(client, contactId, contactName) {
   const activeConversationId = await getActiveConversationId(client, contactId);
   if (activeConversationId) {
     const existing = await getConversationRow(client, activeConversationId, false);
-    if (existing && existing.status === "open") {
+    if (existing && ["open", "agent_pending"].includes(existing.status)) {
       return rowToConversation(existing);
     }
   }
@@ -683,7 +683,7 @@ async function recordFlowTransition({ conversationId: id, flowMeta }) {
           conversation.resolver = "human";
         } else if (explicitlyClearedAdvisor && conversation.status === "agent_pending") {
           conversation.status = "open";
-          conversation.resolver = "automatic";
+          conversation.resolver = sessionData.manualAdvisorIntervened ? "human" : "automatic";
         }
       }
 
