@@ -59,6 +59,9 @@
   - the 5 remaining high advisories belong to the Puppeteer stack inherited from the pinned `whatsapp-web.js` runtime
   - no forced WhatsApp runtime upgrade was made before a Windows/browser compatibility validation
   - clean install and the full suite remained green at `151 pass / 2 skip / 0 fail`
+- Published the reconciled production release to `origin/main` at commit `ba9d8fece86d9a5bb70d01a515d5d8d195686de8`.
+- Deployed the Web-only production surface and confirmed Vercel `Ready` on the stable URL `https://whatsapp-bot-node-chatbot1.vercel.app`; the deployment did not synchronize a Meta webhook.
+- Remaining live activation is intentionally limited to the pharmacy equipment: stop and update the Windows runtime, persist Bot inicial, link the pharmacy WhatsApp Business account by QR, and complete the real welcome/waiting/attended smoke test.
 
 ## 2026-07-13
 

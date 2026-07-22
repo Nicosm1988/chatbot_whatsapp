@@ -1,6 +1,6 @@
 {
     "project": "WhatsApp Bot Farmacia Delko",
-    "lastUpdated": "2026-07-21T20:55:20-03:00",
+    "lastUpdated": "2026-07-21T21:03:09-03:00",
     "documentation": {
         "githubRepoUrl": "https://github.com/Nicosm1988/chatbot_whatsapp",
         "cloneUrl": "https://github.com/Nicosm1988/chatbot_whatsapp.git",
@@ -62,7 +62,11 @@
         "platform": "Vercel",
         "status": "active",
         "baseUrl": "https://whatsapp-bot-node-chatbot1.vercel.app",
-        "lastManualProductionDeployAt": "2026-04-14T00:18:00-03:00",
+        "lastManualProductionDeployAt": "2026-07-21T20:58:12-03:00",
+        "productionReleaseCommit": "ba9d8fece86d9a5bb70d01a515d5d8d195686de8",
+        "productionReleasePublishedAt": "2026-07-21T21:00:00-03:00",
+        "productionReleasePublished": true,
+        "vercelProductionReady": true,
         "runtimeReadinessEndpoint": "/api/system/ready",
         "liveValidationStatus": "validated_iteratively",
         "surfaces": {
@@ -297,7 +301,8 @@
                 "pharmacyNumberLiveValidationPending": true,
                 "currentLinuxRuntimeRunning": false,
                 "exactReleaseReconciliationPending": false,
-                "exactReleasePublishPending": true,
+                "exactReleasePublishPending": false,
+                "exactReleasePublished": true,
                 "botInitialActivationPending": true,
                 "windowsRuntimeStopScript": "apps/whatsapp-bot-node/scripts/stop_whatsapp_lab.ps1",
                 "botCompleteLivePlexCheckPending": true

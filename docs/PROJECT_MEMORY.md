@@ -39,9 +39,11 @@ Last update: 2026-07-21
   - GitHub release validation runs tests only, and the normal production deploy updates Vercel without synchronizing Meta webhooks
   - Vercel and the documented runtime are pinned to Node `22.x`
   - compatible production dependency patches reduced the npm audit from 13 advisories to 5 without changing the pinned WhatsApp Web runtime; the remaining advisories are inherited through its legacy Puppeteer stack and require a separately validated runtime upgrade
+  - the reconciled release was published to `origin/main` at commit `ba9d8fece86d9a5bb70d01a515d5d8d195686de8`
+  - the stable Vercel production deployment is `Ready` at `https://whatsapp-bot-node-chatbot1.vercel.app`
   - the Linux workspace currently has no running Web runtime or controlled browser
   - the pharmacy number is not selected through a code variable; it becomes active when that WhatsApp Business account links the controlled Windows browser by QR
-  - live go-live remains pending: publish the reconciled release, restart on Windows, activate Bot inicial, link by QR, then validate one real inbound message, label transition and human response
+  - live go-live remains pending only on the pharmacy equipment: stop/update/restart the Windows runtime, persist Bot inicial, link the pharmacy account by QR, then validate one real inbound message, label transition and human response
   - Bot completo additionally needs a real Plex product/stock check because the current audit observed a live `403` and documentary fallback
 - No Meta Cloud/WABA/button integration is required for this Web mode, but it still uses WhatsApp (a Meta service) through unofficial Web automation. The existing restriction/termination risk and owner acknowledgement requirement remain unchanged.
 
